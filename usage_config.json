@@ -1,0 +1,6 @@
+{
+  "_comment": "플랜별 5시간/주간 한도 (USD, API 환산 기준). 본인 플랜만 수정해도 됩니다. 키는 lowercase: pro / max5x / max20x",
+  "pro":    { "5h":  35, "week":  245 },
+  "max5x":  { "5h": 140, "week":  980 },
+  "max20x": { "5h": 280, "week": 1960 }
+}
