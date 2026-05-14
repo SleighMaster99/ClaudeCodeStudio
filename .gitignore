@@ -17,4 +17,4 @@ Editor/obj/
 *.user
 
 # Visual Studio IDE 캐시
-Editor/.vs/
+.vs/
