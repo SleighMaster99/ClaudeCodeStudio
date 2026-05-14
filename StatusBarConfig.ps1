@@ -8,6 +8,27 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+if (-not ('NativeWinUtil' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class NativeWinUtil {
+    [DllImport("user32.dll")] static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+    const int WM_SETREDRAW = 0x000B;
+    public static void SuspendDrawing(IntPtr handle) { SendMessage(handle, WM_SETREDRAW, 0, 0); }
+    public static void ResumeDrawing(IntPtr handle)  { SendMessage(handle, WM_SETREDRAW, 1, 0); }
+}
+'@
+}
+
+function Enable-DoubleBuffer($ctrl) {
+    try {
+        $bf = [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic
+        $prop = [System.Windows.Forms.Control].GetProperty('DoubleBuffered', $bf)
+        $prop.SetValue($ctrl, $true, $null)
+    } catch {}
+}
+
 if (-not ('HScrollWheelFilter' -as [type])) {
     Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing -TypeDefinition @'
 using System;
@@ -434,6 +455,7 @@ $previewFlow.BorderStyle = 'FixedSingle'
 $previewFlow.TabStop = $true
 $previewFlow.AllowDrop = $true
 $previewBox.Controls.Add($previewFlow)
+Enable-DoubleBuffer $previewFlow
 
 $previewFlow.Add_DragEnter({
     param($s, $e)
@@ -856,18 +878,25 @@ function Add-RowPanel($r) {
 }
 
 function Render-Preview {
-    $previewFlow.SuspendLayout()
-    $previewFlow.Controls.Clear()
-    if ($script:Layout.rows.Count -eq 0) {
-        [void]$script:Layout.rows.Add((New-Object System.Collections.ArrayList))
+    $h = $previewFlow.Handle
+    [NativeWinUtil]::SuspendDrawing($h)
+    try {
+        $previewFlow.SuspendLayout()
+        $previewFlow.Controls.Clear()
+        if ($script:Layout.rows.Count -eq 0) {
+            [void]$script:Layout.rows.Add((New-Object System.Collections.ArrayList))
+        }
+        Add-InterRowZone 0
+        for ($r = 0; $r -lt $script:Layout.rows.Count; $r++) {
+            Add-RowPanel $r
+            Add-InterRowZone ($r + 1)
+        }
+        $previewFlow.ResumeLayout()
+        & $script:EqualizeWidths
+    } finally {
+        [NativeWinUtil]::ResumeDrawing($h)
+        $previewFlow.Invalidate($true)
     }
-    Add-InterRowZone 0
-    for ($r = 0; $r -lt $script:Layout.rows.Count; $r++) {
-        Add-RowPanel $r
-        Add-InterRowZone ($r + 1)
-    }
-    $previewFlow.ResumeLayout()
-    & $script:EqualizeWidths
 }
 
 function Render-Palette {
@@ -879,11 +908,18 @@ function Render-Palette {
         $tab.Text = $cat
         $tab.BackColor = [System.Drawing.Color]::White
 
+        $scrollHost = New-Object System.Windows.Forms.Panel
+        $scrollHost.Dock = 'Fill'
+        $scrollHost.AutoScroll = $true
+        $scrollHost.BackColor = [System.Drawing.Color]::White
+        Enable-DoubleBuffer $scrollHost
+
         $flow = New-Object System.Windows.Forms.FlowLayoutPanel
-        $flow.Dock = 'Fill'
+        $flow.Dock = 'Top'
         $flow.FlowDirection = 'LeftToRight'
         $flow.WrapContents = $true
-        $flow.AutoScroll = $true
+        $flow.AutoSize = $true
+        $flow.AutoSizeMode = 'GrowAndShrink'
         $flow.AllowDrop = $true
         $flow.BackColor = [System.Drawing.Color]::White
         $flow.Add_DragEnter($paletteDropEnter)
@@ -894,7 +930,8 @@ function Render-Palette {
             $p = New-ItemPanel @{ type = $key } $true -1 -1
             $flow.Controls.Add($p)
         }
-        $tab.Controls.Add($flow)
+        $scrollHost.Controls.Add($flow)
+        $tab.Controls.Add($scrollHost)
         $paletteTabs.TabPages.Add($tab)
         $script:CategoryFlows[$cat] = $flow
     }
