@@ -7,6 +7,9 @@
         Width="1100" Height="900"
         MinWidth="700" MinHeight="500"
         WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver"
+        PreviewQueryContinueDrag="Window_PreviewQueryContinueDrag"
         d:DataContext="{d:DesignInstance vm:MainViewModel}"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -57,7 +60,7 @@
         </DataTemplate>
     </Window.Resources>
 
-    <Grid Margin="10">
+    <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="*"/>

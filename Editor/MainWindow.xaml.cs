@@ -2,8 +2,10 @@ using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using StatusBarEditor.Controls;
 using StatusBarEditor.Models;
 using StatusBarEditor.Services;
 using StatusBarEditor.ViewModels;
@@ -16,6 +18,10 @@ public partial class MainWindow : Window
 
     private Point _dragStartPos;
     private const string DragFormat = "StatusBarEditor.DragPayload";
+
+    private DragAdorner? _adorner;
+    private AdornerLayer? _adornerLayer;
+    private Point _ghostOffset;  // 마우스 클릭 위치 ↔ 카드 좌상단 오프셋
 
     public MainWindow()
     {
@@ -38,6 +44,38 @@ public partial class MainWindow : Window
     private void DragSource_MouseDown(object sender, MouseButtonEventArgs e)
     {
         _dragStartPos = e.GetPosition(null);
+        if (sender is FrameworkElement fe)
+            _ghostOffset = e.GetPosition(fe);
+    }
+
+    private void StartAdorner(FrameworkElement source)
+    {
+        StopAdorner();
+        _adornerLayer = AdornerLayer.GetAdornerLayer(RootGrid);
+        if (_adornerLayer == null) return;
+        _adorner = new DragAdorner(RootGrid, source);
+        _adornerLayer.Add(_adorner);
+    }
+
+    private void StopAdorner()
+    {
+        if (_adornerLayer != null && _adorner != null)
+            _adornerLayer.Remove(_adorner);
+        _adorner = null;
+        _adornerLayer = null;
+    }
+
+    private void Window_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (_adorner == null) return;
+        var pos = e.GetPosition(RootGrid);
+        _adorner.UpdatePosition(new Point(pos.X - _ghostOffset.X, pos.Y - _ghostOffset.Y));
+    }
+
+    private void Window_PreviewQueryContinueDrag(object sender, QueryContinueDragEventArgs e)
+    {
+        // 드래그가 끝났거나(EscapeCancel/Drop) 마우스 좌클릭 해제되면 adorner 정리.
+        if (e.Action == DragAction.Cancel || e.Action == DragAction.Drop) StopAdorner();
     }
 
     private bool PastDragThreshold(MouseEventArgs e)
@@ -55,7 +93,9 @@ public partial class MainWindow : Window
 
         var payload = new DragPayload { Kind = DragKind.Palette, PaletteKey = info.Key };
         var data = new DataObject(DragFormat, payload);
-        DragDrop.DoDragDrop(fe, data, DragDropEffects.Copy | DragDropEffects.Move);
+        StartAdorner(fe);
+        try { DragDrop.DoDragDrop(fe, data, DragDropEffects.Copy | DragDropEffects.Move); }
+        finally { StopAdorner(); }
     }
 
     private void PreviewItem_MouseMove(object sender, MouseEventArgs e)
@@ -69,7 +109,9 @@ public partial class MainWindow : Window
 
         var payload = new DragPayload { Kind = DragKind.PreviewItem, Item = item, SourceRow = sourceRow };
         var data = new DataObject(DragFormat, payload);
-        DragDrop.DoDragDrop(fe, data, DragDropEffects.Copy | DragDropEffects.Move);
+        StartAdorner(fe);
+        try { DragDrop.DoDragDrop(fe, data, DragDropEffects.Copy | DragDropEffects.Move); }
+        finally { StopAdorner(); }
     }
 
     private void RowHandle_MouseMove(object sender, MouseEventArgs e)
@@ -80,7 +122,22 @@ public partial class MainWindow : Window
 
         var payload = new DragPayload { Kind = DragKind.Row, RowRef = row };
         var data = new DataObject(DragFormat, payload);
-        DragDrop.DoDragDrop(fe, data, DragDropEffects.Copy | DragDropEffects.Move);
+        // 행 핸들은 텍스트라 ghost 대상이 작아 보임. 대신 행 본체를 ghost로 사용.
+        var rowBorder = FindAncestor<Border>(fe, b => b.Tag is Row r && ReferenceEquals(r, row));
+        StartAdorner(rowBorder ?? fe);
+        try { DragDrop.DoDragDrop(fe, data, DragDropEffects.Copy | DragDropEffects.Move); }
+        finally { StopAdorner(); }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject start, Func<T, bool>? predicate = null) where T : DependencyObject
+    {
+        var cur = start;
+        while (cur != null)
+        {
+            if (cur is T t && (predicate == null || predicate(t))) return t;
+            cur = VisualTreeHelper.GetParent(cur);
+        }
+        return null;
     }
 
     // === 우클릭 (삭제) ===
