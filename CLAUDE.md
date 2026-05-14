@@ -1,25 +1,50 @@
 # Claude Code StatusBar
 
-Claude Code의 하단 statusLine을 커스터마이징하기 위한 도구. PowerShell 런타임 + WinForms GUI 편집기로 구성되어 있다.
+Claude Code의 하단 statusLine을 커스터마이징하기 위한 도구. 두 파트로 구성:
+
+1. **PowerShell 런타임** (`StatusLine.ps1`) — Claude Code가 매 stdin마다 호출하는 렌더러
+2. **C# WPF GUI 편집기** (`Editor/`) — 레이아웃을 시각적으로 편집
 
 ## 파일 구조
 
-| 파일 | 역할 |
+| 파일/폴더 | 역할 |
 | --- | --- |
-| `StatusLine.ps1` | statusLine 런타임. stdin으로 JSON을 받아 `config.json` 레이아웃에 따라 멀티라인 출력 |
-| `StatusBarConfig.ps1` | WinForms 기반 GUI 편집기 (드래그&드롭 레이아웃 편집) |
-| `Edit-StatusBar.vbs` | GUI를 콘솔 없이 띄우는 런처 |
+| `StatusLine.ps1` | statusLine 런타임. stdin JSON을 받아 `config.json` 레이아웃대로 멀티라인 출력 |
+| `Editor/` | C# WPF 편집기 프로젝트 (`net9.0-windows`, WinExe) |
+| `Edit-StatusBar.vbs` | 편집기 런처. exe가 없으면 자동 빌드 |
 | `config.json` | 레이아웃 정의 (`rows` → 각 줄의 항목 배열) |
 | `usage_config.json` | 플랜별 5시간/주간 한도 (pro / max5x / max20x), API 환산 USD |
+| `StatusBarConfig.ps1` | (구) WinForms 편집기 — 호환성 보존용. 신규 변경은 `Editor/`에서만 |
 | `.last_input.json` | 직전 호출에서 받은 stdin JSON (디버깅용 자동 저장) |
 | `.usage_cache.json` | `~/.claude/projects/**/*.jsonl` 집계 결과 캐시 (60초 TTL) |
 | `.version_cache.txt` | `claude --version` 결과 캐시 (24시간 TTL) |
+
+### Editor/ 내부
+
+| 경로 | 역할 |
+| --- | --- |
+| `StatusBarEditor.csproj` | WPF 프로젝트 (.NET 9, UseWPF) |
+| `App.xaml(.cs)`, `MainWindow.xaml(.cs)` | 진입점 + 메인 윈도우 |
+| `Models/` | `Item`, `Row`, `Layout`, `ItemTypeInfo`, `ItemCatalog` |
+| `ViewModels/` | `MainViewModel`, `PaletteGroup` |
+| `Services/ConfigStore.cs` | `config.json` 로드/저장 (System.Text.Json) |
+| `Services/SettingsApplier.cs` | `~/.claude/settings.json`의 `statusLine` 필드 갱신 |
+| `Services/ProjectPaths.cs` | `StatusLine.ps1` 위치 자동 탐색해서 프로젝트 루트 결정 |
+
+## 빌드/실행
+
+- 빌드: `dotnet build Editor/StatusBarEditor.csproj -c Release` → `Editor/bin/Release/net9.0-windows/StatusBarEditor.exe`
+- 실행: `Edit-StatusBar.vbs` 더블클릭 (exe 없으면 빌드 여부 묻고 자동 빌드)
+- VS IDE: `Editor/StatusBarEditor.csproj`를 열면 XAML 디자이너 활성화
+- 요구사항: .NET 9 SDK (사용자 환경에 이미 설치됨)
 
 ## 동작 방식
 
 1. Claude Code가 매 stdin마다 `StatusLine.ps1`을 실행하면서 세션 정보 JSON을 표준입력으로 전달
 2. `StatusLine.ps1`이 stdin을 파싱해 `$ctx` 전역으로 보관 → `config.json`의 `rows`를 순회하며 항목별 렌더링
 3. 줄(row) 단위로 `Write-Output`하므로 출력된 각 라인이 statusLine의 한 줄이 된다
+
+편집기는 같은 `config.json`을 읽고 쓰므로, 편집기에서 "저장 & 적용"하면 다음 Claude Code 호출부터 반영됨.
 
 ## stdin JSON 주요 필드
 
@@ -37,14 +62,16 @@ Claude Code의 하단 statusLine을 커스터마이징하기 위한 도구. Powe
 
 ## 항목 추가/수정 절차
 
-새로운 항목 타입을 추가할 때는 **반드시 두 파일을 동시에 수정**해야 한다:
+새 항목 타입을 추가할 때는 **두 곳을 동시에** 수정한다:
 
-1. **`StatusLine.ps1`** — `# ----- Render -----` 섹션의 `switch ($it.type)`에 case 추가
-2. **`StatusBarConfig.ps1`** — `$ItemTypes` 해시테이블에 동일한 키로 `Label`, `Sample`, `Desc`, `Cat` 등록
+1. **`StatusLine.ps1`** — `# ----- Render -----` 섹션의 `switch ($it.type)`에 case 추가 (런타임 렌더링)
+2. **`Editor/Models/ItemCatalog.cs`** — `All` 배열에 `ItemTypeInfo` 추가 (편집기 팔레트)
 
-`Cat`은 GUI 팔레트의 탭 분류 (`Claude`, `워크스페이스`, `Git`, `시간`, `시스템`, `사용률`, `아이콘`, `구분자/포맷`).
+`Category`는 GUI 팔레트의 탭 분류: `Claude`, `워크스페이스`, `Git`, `시간`, `시스템`, `사용률`, `아이콘`, `구분자/포맷` (마지막 카테고리는 항상 노출되는 고정 영역).
 
 값이 null일 때 `?` 같은 placeholder 대신 `0` 또는 빈 문자열을 쓰는 게 기존 패턴 (예: `ctx_pct`, `ctx_bar`).
+
+> 구 `StatusBarConfig.ps1`의 `$ItemTypes`는 이제 사용되지 않지만 호환성 차원에서 보존 중. 새 변경은 `ItemCatalog.cs`에만.
 
 ## 아이콘 시스템
 
@@ -53,7 +80,7 @@ Claude Code의 하단 statusLine을 커스터마이징하기 위한 도구. Powe
 
 - `StatusLine.ps1`의 `$script:Icons` 해시테이블에 `<key> → 글리프` 매핑 정의
 - `switch`에서 `{ $_ -like 'icon_*' }` 케이스가 키를 잘라내 매핑 조회 후 출력
-- 새 아이콘 추가 시: `$script:Icons`에 키/글리프 추가 + `$ItemTypes`에 `icon_<key>` 항목 등록 (`Cat = '아이콘'`)
+- 새 아이콘 추가 시: `$script:Icons`에 키/글리프 추가 + `ItemCatalog.All`에 `icon_<key>` 항목 등록 (Category = "아이콘")
 
 기본 글리프는 이모지를 사용한다 (폰트 의존성 없음). Nerd Font 글리프로 바꾸려면 `$script:Icons`만 교체하면 된다.
 
@@ -72,16 +99,17 @@ Unicode 이모지는 두 종류로 갈린다:
 
 ## 설치/적용
 
-GUI에서 **"저장 & 적용"** 버튼을 누르면:
+편집기에서 **"저장 & 적용"** 버튼을 누르면:
 
-1. `config.json`에 레이아웃 저장
-2. `~/.claude/settings.json`의 `statusLine`을 `powershell -NoProfile -ExecutionPolicy Bypass -File <StatusLine.ps1>` 으로 갱신
+1. `config.json`에 레이아웃 저장 (`ConfigStore.Save`)
+2. `~/.claude/settings.json`의 `statusLine`을 `powershell -NoProfile -ExecutionPolicy Bypass -File <StatusLine.ps1>` 으로 갱신 (`SettingsApplier.Apply`)
 
 수동 적용 시에도 동일한 `statusLine` 객체를 `~/.claude/settings.json`에 넣어주면 된다.
 
 ## 디자인 제약
 
-- **Windows 전용**: PowerShell 5+ 및 WinForms 기반
-- **외부 의존성 없음**: 표준 .NET, git, claude CLI만 사용
-- **에러는 조용히**: `$ErrorActionPreference = 'SilentlyContinue'`, 대부분 try/catch로 감싸 statusLine이 깨지지 않도록 함
+- **Windows 전용**: PowerShell 5+ 런타임, .NET 9 WPF 편집기
+- **외부 의존성 없음**: .NET 표준 라이브러리만 사용 (NuGet 패키지 0개)
+- **에러는 조용히**: `StatusLine.ps1`은 `$ErrorActionPreference = 'SilentlyContinue'` + try/catch로 감싸 statusLine이 깨지지 않도록 함
 - **출력 인코딩 UTF-8** 고정 (한글/이모지 깨짐 방지)
+- **`config.json` 포맷 호환**: PowerShell이 읽던 형태를 그대로 유지 (`rows` → `[{type, value?}]`). System.Text.Json `JsonPropertyName`으로 소문자 매핑

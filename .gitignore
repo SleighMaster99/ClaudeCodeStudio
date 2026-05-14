@@ -10,3 +10,11 @@ desktop.ini
 *.swp
 .vscode/
 .idea/
+
+# .NET 빌드 산출물
+Editor/bin/
+Editor/obj/
+*.user
+
+# Visual Studio IDE 캐시
+Editor/.vs/
