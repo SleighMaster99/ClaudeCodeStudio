@@ -139,8 +139,8 @@ function Get-BarColor([double]$pct) {
     return "$([char]27)[92m"                         # bright green
 }
 
-# Track background (dark gray, visible on light & dark themes)
-$script:BG_TRACK = "$([char]27)[100m"
+# Track background (medium gray, visible on light & dark themes)
+$script:BG_TRACK = "$([char]27)[48;5;246m"
 
 function Render-Bar([double]$pct, [int]$width = 10) {
     if ($pct -lt 0) { $pct = 0 }
