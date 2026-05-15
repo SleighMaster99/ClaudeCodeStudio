@@ -104,6 +104,12 @@
         "type": "space"
       },
       {
+        "type": "ctx_tokens"
+      },
+      {
+        "type": "space"
+      },
+      {
         "type": "ctx_bar"
       },
       {
@@ -123,6 +129,12 @@
       },
       {
         "type": "icon_h5"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "h5_remain"
       },
       {
         "type": "space"
@@ -152,6 +164,12 @@
         "type": "space"
       },
       {
+        "type": "week_remain"
+      },
+      {
+        "type": "space"
+      },
+      {
         "type": "week_bar"
       },
       {
@@ -159,6 +177,23 @@
       },
       {
         "type": "week_pct"
+      }
+    ],
+    [
+      {
+        "type": "ctx_cost"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "h5_cost"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "week_cost"
       }
     ]
   ]

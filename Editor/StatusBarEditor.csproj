@@ -11,4 +11,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Resource Include="Fonts\D2Coding.ttc" />
+  </ItemGroup>
+
 </Project>
