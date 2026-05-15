@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Windows.Media;
 
 namespace StatusBarEditor.Models;
 
@@ -10,6 +11,45 @@ public static class ItemCatalog
     {
         "Claude", "워크스페이스", "Git", "시간", "시스템", "사용률", "아이콘"
     };
+
+    private static SolidColorBrush Frozen(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static readonly SolidColorBrush BgClaude     = Frozen(214, 228, 248); // 파랑
+    private static readonly SolidColorBrush BgWorkspace  = Frozen(255, 230, 204); // 살구
+    private static readonly SolidColorBrush BgGit        = Frozen(245, 216, 224); // 분홍
+    private static readonly SolidColorBrush BgTime       = Frozen(224, 219, 245); // 라벤더
+    private static readonly SolidColorBrush BgSystem     = Frozen(224, 224, 224); // 회색
+    private static readonly SolidColorBrush BgUsage      = Frozen(204, 232, 220); // 민트
+    private static readonly SolidColorBrush BgIcon       = Frozen(255, 240, 184); // 연노랑
+    private static readonly SolidColorBrush BgSepSymbol  = Frozen(250, 240, 215); // 크림
+    private static readonly SolidColorBrush BgSepSpace   = Frozen(238, 238, 238); // 옅은회색
+    private static readonly SolidColorBrush BgSepText    = Frozen(220, 245, 220); // 연두
+    private static readonly SolidColorBrush BgFallback   = Frozen(214, 228, 248);
+
+    public static Brush GetBackground(string type)
+    {
+        if (string.IsNullOrEmpty(type)) return BgFallback;
+        if (type.StartsWith("sep_")) return BgSepSymbol;
+        if (type == "space") return BgSepSpace;
+        if (type == "text") return BgSepText;
+
+        return Find(type)?.Category switch
+        {
+            "Claude"      => BgClaude,
+            "워크스페이스" => BgWorkspace,
+            "Git"         => BgGit,
+            "시간"         => BgTime,
+            "시스템"       => BgSystem,
+            "사용률"       => BgUsage,
+            "아이콘"       => BgIcon,
+            _              => BgFallback
+        };
+    }
 
     public static readonly IReadOnlyList<ItemTypeInfo> All = new ItemTypeInfo[]
     {
