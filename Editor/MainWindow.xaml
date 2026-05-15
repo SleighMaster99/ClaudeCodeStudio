@@ -43,7 +43,7 @@
 
         <!-- 팔레트 항목 칩 (드래그 가능) -->
         <DataTemplate x:Key="PaletteItemTemplate" DataType="{x:Type m:ItemTypeInfo}">
-            <Border Background="#E8F0FC"
+            <Border Background="{Binding Background}"
                     BorderBrush="#888" BorderThickness="1"
                     CornerRadius="3"
                     Margin="3" Padding="8,6"

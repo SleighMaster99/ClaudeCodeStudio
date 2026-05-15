@@ -56,13 +56,7 @@ public class Item : INotifyPropertyChanged
 
     public bool IsTextItem => _type == "text";
 
-    public Brush Background => _type switch
-    {
-        var t when t.StartsWith("sep_") => new SolidColorBrush(Color.FromRgb(250, 240, 215)),
-        "space" => new SolidColorBrush(Color.FromRgb(238, 238, 238)),
-        "text" => new SolidColorBrush(Color.FromRgb(220, 245, 220)),
-        _ => new SolidColorBrush(Color.FromRgb(214, 228, 248))
-    };
+    public Brush Background => ItemCatalog.GetBackground(_type);
 
     public Item Clone() => new(_type, _value);
 
