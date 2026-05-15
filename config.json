@@ -187,7 +187,19 @@
         "type": "space"
       },
       {
+        "type": "sep_pipe"
+      },
+      {
+        "type": "space"
+      },
+      {
         "type": "h5_cost"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_pipe"
       },
       {
         "type": "space"
