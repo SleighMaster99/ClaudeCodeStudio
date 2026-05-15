@@ -22,18 +22,21 @@
                     BorderBrush="#888" BorderThickness="1"
                     CornerRadius="3"
                     Margin="3" Padding="8,6"
-                    MinWidth="100"
+                    MinWidth="140"
                     Tag="{Binding}"
                     PreviewMouseLeftButtonDown="DragSource_MouseDown"
                     MouseMove="PreviewItem_MouseMove"
                     MouseRightButtonUp="PreviewItem_RightClick"
                     Cursor="Hand">
                 <StackPanel>
-                    <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="12"/>
-                    <TextBlock Text="{Binding Sample}" Foreground="#3C5A8C"
-                               FontFamily="Consolas" FontSize="12" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="14"/>
+                    <Border ClipToBounds="True" Height="22" Margin="0,4,0,0">
+                        <TextBlock Text="{Binding Sample}" Foreground="#3C5A8C"
+                                   FontFamily="pack://application:,,,/Fonts/#D2Coding" FontSize="14"
+                                   VerticalAlignment="Center"/>
+                    </Border>
                     <TextBlock Text="{Binding Description}" Foreground="Gray"
-                               FontSize="10" Margin="0,3,0,0"/>
+                               FontSize="12" Margin="0,3,0,0"/>
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -50,27 +53,50 @@
                     MouseMove="PaletteItem_MouseMove"
                     Cursor="Hand">
                 <StackPanel>
-                    <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="12"/>
-                    <TextBlock Text="{Binding Sample}" Foreground="#3C5A8C"
-                               FontFamily="Consolas" FontSize="12" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding Label}" FontWeight="Bold" FontSize="14"/>
+                    <Border x:Name="SampleBorder" ClipToBounds="True" Height="22" Margin="0,4,0,0">
+                        <TextBlock x:Name="SampleText" Text="{Binding Sample}" Foreground="#3C5A8C"
+                                   FontFamily="pack://application:,,,/Fonts/#D2Coding" FontSize="14"
+                                   VerticalAlignment="Center"/>
+                    </Border>
                     <TextBlock Text="{Binding Description}" Foreground="Gray"
-                               FontSize="10" Margin="0,3,0,0"/>
+                               FontSize="12" Margin="0,3,0,0"/>
                 </StackPanel>
             </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Category}" Value="아이콘">
+                    <Setter TargetName="SampleText" Property="FontSize" Value="22"/>
+                    <Setter TargetName="SampleText" Property="FontFamily" Value="Segoe UI Emoji"/>
+                    <Setter TargetName="SampleBorder" Property="Height" Value="30"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
     </Window.Resources>
 
     <Grid x:Name="RootGrid" Margin="10">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 미리보기 -->
-        <GroupBox Header="미리보기 (드래그 = 이동, 우클릭 = 삭제, 줄 사이로 드롭 = 새 줄)" Grid.Row="0" Margin="0,0,0,5">
+        <!-- 실제 미리보기 -->
+        <GroupBox Header="미리보기" Grid.Row="0" Margin="0,0,0,5">
+            <Border Background="#F5F5F5" BorderBrush="#CCC" BorderThickness="1" Padding="10,6" CornerRadius="3">
+                <TextBlock x:Name="LivePreview"
+                           FontFamily="pack://application:,,,/Fonts/#D2Coding"
+                           FontSize="13" Foreground="#333333"
+                           Text="(레이아웃에 항목을 추가하세요)"
+                           TextWrapping="NoWrap"/>
+            </Border>
+        </GroupBox>
+
+        <!-- 레이아웃 -->
+        <GroupBox Header="레이아웃 (드래그 = 이동, 우클릭 = 삭제, 줄 사이로 드롭 = 새 줄)" Grid.Row="1" Margin="0,0,0,5">
             <Border Background="White" BorderBrush="#CCC" BorderThickness="1">
-                <ScrollViewer x:Name="PreviewScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="PreviewScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                              PreviewMouseWheel="ScrollViewer_ShiftWheel">
                     <StackPanel Background="Transparent">
                     <ItemsControl x:Name="PreviewRows" ItemsSource="{Binding Layout.Rows}">
                         <ItemsControl.ItemsPanel>
@@ -82,7 +108,7 @@
                             <DataTemplate DataType="{x:Type m:Row}">
                                 <StackPanel>
                                     <!-- 줄 사이 드롭 존 -->
-                                    <Border Height="12" Background="Transparent"
+                                    <Border Height="28" Background="Transparent"
                                             AllowDrop="True"
                                             DragOver="InterRowZone_DragOver"
                                             DragLeave="InterRowZone_DragLeave"
@@ -121,7 +147,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <!-- 마지막 줄 아래 trailing 드롭 존 -->
-                    <Border x:Name="TrailingZone" Height="24" Background="Transparent"
+                    <Border x:Name="TrailingZone" Height="40" Background="Transparent"
                             AllowDrop="True"
                             DragOver="TrailingZone_DragOver"
                             DragLeave="TrailingZone_DragLeave"
@@ -132,7 +158,7 @@
         </GroupBox>
 
         <!-- 팔레트 -->
-        <GroupBox Header="항목 (위로 드래그 = 추가, 미리보기 항목을 여기로 드래그 = 삭제)" Grid.Row="1" Margin="0,5,0,0"
+        <GroupBox Header="항목 (위로 드래그 = 추가, 레이아웃 항목을 여기로 드래그 = 삭제)" Grid.Row="2" Margin="0,5,0,0"
                   AllowDrop="True"
                   DragOver="PaletteArea_DragOver"
                   Drop="PaletteArea_Drop">
@@ -148,7 +174,8 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   AllowDrop="True"
                                   DragOver="PaletteArea_DragOver"
-                                  Drop="PaletteArea_Drop">
+                                  Drop="PaletteArea_Drop"
+                                  PreviewMouseWheel="ScrollViewer_ShiftWheel">
                         <ItemsControl ItemsSource="{Binding Separators.Items}"
                                       ItemTemplate="{StaticResource PaletteItemTemplate}"
                                       AllowDrop="True"
@@ -164,7 +191,7 @@
                 </GroupBox>
 
                 <!-- 카테고리별 탭 -->
-                <TabControl ItemsSource="{Binding PaletteTabs}"
+                <TabControl ItemsSource="{Binding PaletteTabs}" SelectedIndex="0"
                             AllowDrop="True"
                             DragOver="PaletteArea_DragOver"
                             Drop="PaletteArea_Drop">
@@ -175,10 +202,12 @@
                     </TabControl.ItemTemplate>
                     <TabControl.ContentTemplate>
                         <DataTemplate DataType="{x:Type vm:PaletteGroup}">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White"
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" VerticalAlignment="Stretch"
+                                          Background="White"
                                           AllowDrop="True"
                                           DragOver="PaletteArea_DragOver"
-                                          Drop="PaletteArea_Drop">
+                                          Drop="PaletteArea_Drop"
+                                          PreviewMouseWheel="ScrollViewer_ShiftWheel">
                                 <ItemsControl ItemsSource="{Binding Items}"
                                               ItemTemplate="{StaticResource PaletteItemTemplate}"
                                               AllowDrop="True"
@@ -198,7 +227,7 @@
         </GroupBox>
 
         <!-- 버튼 -->
-        <Grid Grid.Row="2" Margin="0,8,0,0">
+        <Grid Grid.Row="3" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>

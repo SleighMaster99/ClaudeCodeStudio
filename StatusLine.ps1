@@ -183,7 +183,9 @@ function Format-Duration([double]$ms) {
     $m = [int]($s / 60); $rs = $s % 60
     if ($m -lt 60) { return ('{0}m{1:D2}s' -f $m, $rs) }
     $h = [int]($m / 60); $rm = $m % 60
-    return ('{0}h{1:D2}m' -f $h, $rm)
+    if ($h -lt 24) { return ('{0}h{1:D2}m' -f $h, $rm) }
+    $d = [int]($h / 24); $rh = $h % 24
+    return ('{0}d{1:D2}h' -f $d, $rh)
 }
 
 function Get-ContextLimit {
@@ -336,7 +338,7 @@ function Get-PlanLimits($plan) {
 # ----- Usage aggregation from ~/.claude/projects/**/*.jsonl -----
 function Compute-Usage {
     $projectsDir = Join-Path $env:USERPROFILE '.claude\projects'
-    $result = @{ h5_cost = 0.0; week_cost = 0.0; h5_tokens = 0.0; week_tokens = 0.0 }
+    $result = @{ h5_cost = 0.0; week_cost = 0.0; h5_tokens = 0.0; week_tokens = 0.0; h5_oldest = $null; week_oldest = $null }
     if (-not (Test-Path $projectsDir)) { return $result }
 
     $now = Get-Date
@@ -379,9 +381,11 @@ function Compute-Usage {
 
                         $result.week_cost   += $c
                         $result.week_tokens += $tok
+                        if ($null -eq $result.week_oldest -or $msgTime -lt $result.week_oldest) { $result.week_oldest = $msgTime }
                         if ($msgTime -ge $h5Cutoff) {
                             $result.h5_cost   += $c
                             $result.h5_tokens += $tok
+                            if ($null -eq $result.h5_oldest -or $msgTime -lt $result.h5_oldest) { $result.h5_oldest = $msgTime }
                         }
                     }
                 } finally { $reader.Dispose() }
@@ -397,23 +401,31 @@ function Get-CachedUsage {
             $cache = Get-Content $cachePath -Raw -Encoding UTF8 | ConvertFrom-Json
             $age = (Get-Date) - [datetime]$cache.at
             if ($age.TotalSeconds -lt 60) {
+                $h5o = $null; if ($cache.h5_oldest) { $h5o = [datetime]$cache.h5_oldest }
+                $wko = $null; if ($cache.week_oldest) { $wko = [datetime]$cache.week_oldest }
                 return @{
                     h5_cost     = [double]$cache.h5_cost
                     week_cost   = [double]$cache.week_cost
                     h5_tokens   = [double]$cache.h5_tokens
                     week_tokens = [double]$cache.week_tokens
+                    h5_oldest   = $h5o
+                    week_oldest = $wko
                 }
             }
         } catch {}
     }
     $u = Compute-Usage
     try {
+        $h5os = $null; if ($u.h5_oldest) { $h5os = $u.h5_oldest.ToString('o') }
+        $wkos = $null; if ($u.week_oldest) { $wkos = $u.week_oldest.ToString('o') }
         @{
             at          = (Get-Date).ToString('o')
             h5_cost     = $u.h5_cost
             week_cost   = $u.week_cost
             h5_tokens   = $u.h5_tokens
             week_tokens = $u.week_tokens
+            h5_oldest   = $h5os
+            week_oldest = $wkos
         } | ConvertTo-Json | Set-Content $cachePath -Encoding UTF8
     } catch {}
     return $u
@@ -509,6 +521,14 @@ foreach ($row in $cfg.rows) {
                 if ($null -eq $p) { $p = 0 }
                 [void]$sb.Append((Render-BarDot ([double]$p)))
             }
+            'ctx_tokens' {
+                $limit = Get-ContextLimit
+                $limitK = [int]($limit / 1000)
+                $p = Get-ContextPercent
+                if ($null -eq $p) { $p = 0 }
+                $usedK = [int][Math]::Round($limitK * $p / 100.0)
+                [void]$sb.Append("${usedK}k/${limitK}k")
+            }
             { $_ -in 'h5_bar','h5_bar_ascii','h5_bar_dot' } {
                 $direct = Get-FieldRaw 'rate_limits.five_hour.used_percentage'
                 $pct = $null
@@ -598,6 +618,26 @@ foreach ($row in $cfg.rows) {
             'week_cost'  {
                 $u = Get-CachedUsage
                 [void]$sb.Append(('${0:N2}' -f $u.week_cost))
+            }
+            'h5_remain'  {
+                $u = Get-CachedUsage
+                if ($u.h5_oldest) {
+                    $resetAt = ([datetime]$u.h5_oldest).AddHours(5)
+                    $remain = $resetAt - (Get-Date)
+                    if ($remain.TotalSeconds -gt 0) {
+                        [void]$sb.Append(('~' + (Format-Duration ($remain.TotalMilliseconds))))
+                    } else { [void]$sb.Append('0s') }
+                } else { [void]$sb.Append('-') }
+            }
+            'week_remain' {
+                $u = Get-CachedUsage
+                if ($u.week_oldest) {
+                    $resetAt = ([datetime]$u.week_oldest).AddDays(7)
+                    $remain = $resetAt - (Get-Date)
+                    if ($remain.TotalSeconds -gt 0) {
+                        [void]$sb.Append(('~' + (Format-Duration ($remain.TotalMilliseconds))))
+                    } else { [void]$sb.Append('0s') }
+                } else { [void]$sb.Append('-') }
             }
             # 구분자/포맷
             'sep_pipe'   { [void]$sb.Append('|') }

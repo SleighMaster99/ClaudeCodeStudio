@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Specialized;
 using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -28,6 +30,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _vm;
         LoadFromDisk();
+        WatchLayoutForPreview();
     }
 
     private void LoadFromDisk()
@@ -37,6 +40,61 @@ public partial class MainWindow : Window
         foreach (var r in loaded.Rows) _vm.Layout.Rows.Add(r);
         if (_vm.Layout.Rows.Count == 0) _vm.Layout.Rows.Add(new Row());
         _vm.ClearDirty();
+        RefreshLivePreview();
+    }
+
+    // === 실시간 미리보기 ===
+
+    private void WatchLayoutForPreview()
+    {
+        _vm.Layout.Rows.CollectionChanged += OnLayoutChanged;
+        foreach (var row in _vm.Layout.Rows)
+            row.Items.CollectionChanged += OnLayoutChanged;
+    }
+
+    private void OnLayoutChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems != null)
+            foreach (var item in e.NewItems)
+                if (item is Row row) row.Items.CollectionChanged += OnLayoutChanged;
+        RefreshLivePreview();
+    }
+
+    private void RefreshLivePreview()
+    {
+        if (LivePreview == null) return;
+        var sb = new StringBuilder();
+        foreach (var row in _vm.Layout.Rows)
+        {
+            if (sb.Length > 0) sb.AppendLine();
+            if (row.Items.Count == 0) continue;
+            foreach (var item in row.Items)
+            {
+                var info = ItemCatalog.Find(item.Type);
+                if (info == null) continue;
+                if (item.Type == "text")
+                    sb.Append(string.IsNullOrEmpty(item.Value) ? "" : item.Value);
+                else if (item.Type == "space")
+                    sb.Append(' ');
+                else if (item.Type.StartsWith("sep_"))
+                    sb.Append(info.Sample);
+                else if (item.Type.StartsWith("icon_"))
+                    sb.Append(info.Sample);
+                else
+                    sb.Append(info.Sample);
+            }
+        }
+        LivePreview.Text = sb.Length > 0 ? sb.ToString() : "(레이아웃에 항목을 추가하세요)";
+    }
+
+    // === Shift+Wheel → 가로 스크롤 ===
+
+    private void ScrollViewer_ShiftWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.Shift) return;
+        if (sender is not ScrollViewer sv) return;
+        sv.ScrollToHorizontalOffset(sv.HorizontalOffset - e.Delta);
+        e.Handled = true;
     }
 
     // === 드래그 시작 ===
@@ -154,29 +212,89 @@ public partial class MainWindow : Window
 
     // === 드롭 대상: 줄(Row) ===
 
+    private static readonly Brush RowDefaultBg = new SolidColorBrush(Color.FromRgb(252, 252, 252));
+    private static readonly Brush RowHoverBg = new SolidColorBrush(Color.FromRgb(232, 242, 255));
+    private static readonly Brush RowEdgeTopBg = new SolidColorBrush(Color.FromRgb(200, 225, 255));
+    private static readonly Brush RowEdgeBottomBg = new SolidColorBrush(Color.FromRgb(200, 225, 255));
+
+    private bool IsInRowEdge(FrameworkElement fe, DragEventArgs e, out bool isTop)
+    {
+        var pos = e.GetPosition(fe);
+        var edgeSize = Math.Max(fe.ActualHeight * 0.25, 12);
+        isTop = pos.Y < edgeSize;
+        return pos.Y < edgeSize || pos.Y > fe.ActualHeight - edgeSize;
+    }
+
     private void Row_DragOver(object sender, DragEventArgs e)
     {
         var p = GetPayload(e);
         if (p == null) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
-        // 행 자체를 행 위에 드롭하는 건 무의미 → 거부 (줄 사이 영역으로 가야 함)
-        if (p.Kind == DragKind.Row) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
+        if (sender is not FrameworkElement fe) { e.Handled = true; return; }
+
+        if (p.Kind == DragKind.Row)
+        {
+            if (IsInRowEdge(fe, e, out var isTop))
+            {
+                e.Effects = DragDropEffects.Move;
+                if (sender is Border b) b.BorderBrush = isTop
+                    ? new SolidColorBrush(Color.FromRgb(80, 150, 240))
+                    : new SolidColorBrush(Color.FromRgb(80, 150, 240));
+                if (sender is Border b2) b2.BorderThickness = isTop
+                    ? new Thickness(1, 3, 1, 1)
+                    : new Thickness(1, 1, 1, 3);
+            }
+            else { e.Effects = DragDropEffects.None; }
+            e.Handled = true;
+            return;
+        }
+
         e.Effects = DragDropEffects.Move;
-        if (sender is Border b) b.Background = new SolidColorBrush(Color.FromRgb(232, 242, 255));
+        if (sender is Border bg) bg.Background = RowHoverBg;
         e.Handled = true;
     }
 
     private void Row_DragLeave(object sender, DragEventArgs e)
     {
-        if (sender is Border b) b.Background = new SolidColorBrush(Color.FromRgb(252, 252, 252));
+        if (sender is Border b)
+        {
+            b.Background = RowDefaultBg;
+            b.BorderBrush = new SolidColorBrush(Color.FromRgb(221, 221, 221));
+            b.BorderThickness = new Thickness(1);
+        }
     }
 
     private void Row_Drop(object sender, DragEventArgs e)
     {
-        if (sender is Border b) b.Background = new SolidColorBrush(Color.FromRgb(252, 252, 252));
+        if (sender is Border b)
+        {
+            b.Background = RowDefaultBg;
+            b.BorderBrush = new SolidColorBrush(Color.FromRgb(221, 221, 221));
+            b.BorderThickness = new Thickness(1);
+        }
         if (sender is not FrameworkElement fe || fe.Tag is not Row targetRow) return;
         var p = GetPayload(e);
         if (p == null) return;
-        if (p.Kind == DragKind.Row) return; // 무시
+
+        if (p.Kind == DragKind.Row && p.RowRef != null)
+        {
+            if (!IsInRowEdge(fe, e, out var isTop)) return;
+            var src = p.RowRef;
+            var srcIdx = _vm.Layout.Rows.IndexOf(src);
+            if (srcIdx < 0) return;
+            var targetIdx = _vm.Layout.Rows.IndexOf(targetRow);
+            if (targetIdx < 0) return;
+            var destIdx = isTop ? targetIdx : targetIdx + 1;
+            if (srcIdx < destIdx) destIdx--;
+            destIdx = Math.Clamp(destIdx, 0, _vm.Layout.Rows.Count);
+            if (srcIdx != destIdx)
+            {
+                _vm.Layout.Rows.RemoveAt(srcIdx);
+                _vm.Layout.Rows.Insert(destIdx, src);
+                _vm.MarkDirty();
+            }
+            e.Handled = true;
+            return;
+        }
 
         var insertIndex = ComputeRowInsertIndex(fe, e.GetPosition(fe).X, targetRow);
 
