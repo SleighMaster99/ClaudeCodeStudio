@@ -178,53 +178,6 @@
       {
         "type": "week_remain"
       }
-    ],
-    [
-      {
-        "type": "icon_ctx"
-      },
-      {
-        "type": "space"
-      },
-      {
-        "type": "ctx_cost"
-      },
-      {
-        "type": "space"
-      },
-      {
-        "type": "sep_pipe"
-      },
-      {
-        "type": "space"
-      },
-      {
-        "type": "icon_h5"
-      },
-      {
-        "type": "space"
-      },
-      {
-        "type": "h5_cost"
-      },
-      {
-        "type": "space"
-      },
-      {
-        "type": "sep_pipe"
-      },
-      {
-        "type": "space"
-      },
-      {
-        "type": "icon_week"
-      },
-      {
-        "type": "space"
-      },
-      {
-        "type": "week_cost"
-      }
     ]
   ]
 }
