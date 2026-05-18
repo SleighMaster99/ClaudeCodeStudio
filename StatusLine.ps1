@@ -287,7 +287,7 @@ function Get-PlanType {
 $script:Pricing = @{
     'opus'   = @{ input = 15.0; output = 75.0; cache_write = 18.75; cache_read = 1.50 }
     'sonnet' = @{ input = 3.0;  output = 15.0; cache_write = 3.75;  cache_read = 0.30 }
-    'haiku'  = @{ input = 0.80; output = 4.0;  cache_write = 1.00;  cache_read = 0.08 }
+    'haiku'  = @{ input = 1.0;  output = 5.0;  cache_write = 1.25;  cache_read = 0.10 }
 }
 
 function Get-PricingForModel($modelId) {
@@ -350,6 +350,7 @@ function Compute-Usage {
         ForEach-Object {
             try {
                 $reader = [System.IO.StreamReader]::new($_.FullName)
+                $prevUsageKey = ''
                 try {
                     while ($null -ne ($line = $reader.ReadLine())) {
                         if ([string]::IsNullOrWhiteSpace($line)) { continue }
@@ -367,6 +368,10 @@ function Compute-Usage {
                         if ($obj.message -and $obj.message.usage) { $usage = $obj.message.usage }
                         elseif ($obj.usage) { $usage = $obj.usage }
                         if ($null -eq $usage) { continue }
+
+                        $usageKey = "$($usage.input_tokens)|$($usage.output_tokens)|$($usage.cache_creation_input_tokens)|$($usage.cache_read_input_tokens)"
+                        if ($usageKey -eq $prevUsageKey) { continue }
+                        $prevUsageKey = $usageKey
 
                         $modelId = $null
                         if ($obj.message -and $obj.message.model) { $modelId = $obj.message.model }
@@ -531,18 +536,7 @@ foreach ($row in $cfg.rows) {
             }
             { $_ -in 'h5_bar','h5_bar_ascii','h5_bar_dot' } {
                 $direct = Get-FieldRaw 'rate_limits.five_hour.used_percentage'
-                $pct = $null
-                if ($null -ne $direct) {
-                    $pct = [double]$direct
-                } else {
-                    $u = Get-CachedUsage
-                    $plan = Get-CurrentPlan
-                    $lim = Get-PlanLimits $plan
-                    if ($lim -and $lim['5h'] -gt 0) {
-                        $pct = $u.h5_cost / $lim['5h'] * 100.0
-                    }
-                }
-                if ($null -eq $pct) { $pct = 0 }
+                $pct = if ($null -ne $direct) { [double]$direct } else { 0 }
                 $bar = switch ($_) {
                     'h5_bar_ascii' { Render-BarAscii $pct }
                     'h5_bar_dot'   { Render-BarDot $pct }
@@ -553,18 +547,7 @@ foreach ($row in $cfg.rows) {
             { $_ -in 'week_bar','week_bar_ascii','week_bar_dot' } {
                 $direct = Get-FieldRaw 'rate_limits.seven_day.used_percentage'
                 if ($null -eq $direct) { $direct = Get-FieldRaw 'rate_limits.weekly.used_percentage' }
-                $pct = $null
-                if ($null -ne $direct) {
-                    $pct = [double]$direct
-                } else {
-                    $u = Get-CachedUsage
-                    $plan = Get-CurrentPlan
-                    $lim = Get-PlanLimits $plan
-                    if ($lim -and $lim['week'] -gt 0) {
-                        $pct = $u.week_cost / $lim['week'] * 100.0
-                    }
-                }
-                if ($null -eq $pct) { $pct = 0 }
+                $pct = if ($null -ne $direct) { [double]$direct } else { 0 }
                 $bar = switch ($_) {
                     'week_bar_ascii' { Render-BarAscii $pct }
                     'week_bar_dot'   { Render-BarDot $pct }
@@ -574,38 +557,14 @@ foreach ($row in $cfg.rows) {
             }
             'h5_pct'     {
                 $direct = Get-FieldRaw 'rate_limits.five_hour.used_percentage'
-                if ($null -ne $direct) {
-                    [void]$sb.Append("$([int][Math]::Round([double]$direct))%")
-                } else {
-                    $u = Get-CachedUsage
-                    $plan = Get-CurrentPlan
-                    $lim = Get-PlanLimits $plan
-                    if ($lim -and $lim['5h'] -gt 0) {
-                        $pct = [int][Math]::Round($u.h5_cost / $lim['5h'] * 100.0)
-                        if ($pct -gt 100) { $pct = 100 } elseif ($pct -lt 0) { $pct = 0 }
-                        [void]$sb.Append("${pct}%")
-                    } else {
-                        [void]$sb.Append('-')
-                    }
-                }
+                $pct = if ($null -ne $direct) { [int][Math]::Round([double]$direct) } else { 0 }
+                [void]$sb.Append("${pct}%")
             }
             'week_pct'   {
                 $direct = Get-FieldRaw 'rate_limits.seven_day.used_percentage'
                 if ($null -eq $direct) { $direct = Get-FieldRaw 'rate_limits.weekly.used_percentage' }
-                if ($null -ne $direct) {
-                    [void]$sb.Append("$([int][Math]::Round([double]$direct))%")
-                } else {
-                    $u = Get-CachedUsage
-                    $plan = Get-CurrentPlan
-                    $lim = Get-PlanLimits $plan
-                    if ($lim -and $lim['week'] -gt 0) {
-                        $pct = [int][Math]::Round($u.week_cost / $lim['week'] * 100.0)
-                        if ($pct -gt 100) { $pct = 100 } elseif ($pct -lt 0) { $pct = 0 }
-                        [void]$sb.Append("${pct}%")
-                    } else {
-                        [void]$sb.Append('-')
-                    }
-                }
+                $pct = if ($null -ne $direct) { [int][Math]::Round([double]$direct) } else { 0 }
+                [void]$sb.Append("${pct}%")
             }
             'ctx_cost'   {
                 $c = Get-FieldRaw 'cost.total_cost_usd'
@@ -620,22 +579,22 @@ foreach ($row in $cfg.rows) {
                 [void]$sb.Append(('${0:N2}' -f $u.week_cost))
             }
             'h5_remain'  {
-                $u = Get-CachedUsage
-                if ($u.h5_oldest) {
-                    $resetAt = ([datetime]$u.h5_oldest).AddHours(5)
+                $ra = Get-FieldRaw 'rate_limits.five_hour.resets_at'
+                if ($null -ne $ra) {
+                    $resetAt = [DateTimeOffset]::FromUnixTimeSeconds([long]$ra).LocalDateTime
                     $remain = $resetAt - (Get-Date)
                     if ($remain.TotalSeconds -gt 0) {
-                        [void]$sb.Append(('~' + (Format-Duration ($remain.TotalMilliseconds))))
+                        [void]$sb.Append((Format-Duration ($remain.TotalMilliseconds)))
                     } else { [void]$sb.Append('0s') }
                 } else { [void]$sb.Append('-') }
             }
             'week_remain' {
-                $u = Get-CachedUsage
-                if ($u.week_oldest) {
-                    $resetAt = ([datetime]$u.week_oldest).AddDays(7)
+                $ra = Get-FieldRaw 'rate_limits.seven_day.resets_at'
+                if ($null -ne $ra) {
+                    $resetAt = [DateTimeOffset]::FromUnixTimeSeconds([long]$ra).LocalDateTime
                     $remain = $resetAt - (Get-Date)
                     if ($remain.TotalSeconds -gt 0) {
-                        [void]$sb.Append(('~' + (Format-Duration ($remain.TotalMilliseconds))))
+                        [void]$sb.Append((Format-Duration ($remain.TotalMilliseconds)))
                     } else { [void]$sb.Append('0s') }
                 } else { [void]$sb.Append('-') }
             }
