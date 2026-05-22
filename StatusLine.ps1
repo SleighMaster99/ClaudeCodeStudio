@@ -180,11 +180,11 @@ function Format-Duration([double]$ms) {
     if ($ms -le 0) { return '0s' }
     $s = [int][Math]::Round($ms / 1000)
     if ($s -lt 60) { return "${s}s" }
-    $m = [int]($s / 60); $rs = $s % 60
+    $m = [int][Math]::Floor($s / 60); $rs = $s % 60
     if ($m -lt 60) { return ('{0}m{1:D2}s' -f $m, $rs) }
-    $h = [int]($m / 60); $rm = $m % 60
+    $h = [int][Math]::Floor($m / 60); $rm = $m % 60
     if ($h -lt 24) { return ('{0}h{1:D2}m' -f $h, $rm) }
-    $d = [int]($h / 24); $rh = $h % 24
+    $d = [int][Math]::Floor($h / 24); $rh = $h % 24
     return ('{0}d{1:D2}h' -f $d, $rh)
 }
 
