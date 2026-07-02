@@ -177,6 +177,36 @@
       },
       {
         "type": "week_remain"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_pipe"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "icon_fable"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "fable_bar"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "fable_pct"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "fable_remain"
       }
     ]
   ]
