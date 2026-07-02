@@ -1,6 +1,7 @@
 # 런타임 캐시 / 디버깅 파일
 .last_input.json
 .usage_cache.json
+.fable_cache.json
 .version_cache.txt
 
 # 일반적인 Windows / 에디터 부산물
