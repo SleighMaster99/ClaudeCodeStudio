@@ -11,10 +11,8 @@ Claude Code의 하단 statusLine을 커스터마이징하기 위한 도구. 두 
 | --- | --- |
 | `StatusLine.ps1` | statusLine 런타임. stdin JSON을 받아 `config.json` 레이아웃대로 멀티라인 출력 |
 | `Editor/` | C# WPF 편집기 프로젝트 (`net9.0-windows`, WinExe) |
-| `Edit-StatusBar.vbs` | 편집기 런처. exe가 없으면 자동 빌드 |
 | `config.json` | 레이아웃 정의 (`rows` → 각 줄의 항목 배열) |
 | `usage_config.json` | 플랜별 5시간/주간 한도 (pro / max5x / max20x), API 환산 USD |
-| `StatusBarConfig.ps1` | (구) WinForms 편집기 — 호환성 보존용. 신규 변경은 `Editor/`에서만 |
 | `.last_input.json` | 직전 호출에서 받은 stdin JSON (디버깅용 자동 저장) |
 | `.usage_cache.json` | `~/.claude/projects/**/*.jsonl` 집계 결과 캐시 (60초 TTL) |
 | `.version_cache.txt` | `claude --version` 결과 캐시 (24시간 TTL) |
@@ -34,7 +32,7 @@ Claude Code의 하단 statusLine을 커스터마이징하기 위한 도구. 두 
 ## 빌드/실행
 
 - 빌드: `dotnet build Editor/StatusBarEditor.csproj -c Release` → `Editor/bin/Release/net9.0-windows/StatusBarEditor.exe`
-- 실행: `Edit-StatusBar.vbs` 더블클릭 (exe 없으면 빌드 여부 묻고 자동 빌드)
+- 실행: VS에서 `StatusBarEditor.sln` 열어 실행, 또는 빌드된 `StatusBarEditor.exe` 직접 실행
 - VS IDE: `Editor/StatusBarEditor.csproj`를 열면 XAML 디자이너 활성화
 - 요구사항: .NET 9 SDK (사용자 환경에 이미 설치됨)
 
@@ -70,8 +68,6 @@ Claude Code의 하단 statusLine을 커스터마이징하기 위한 도구. 두 
 `Category`는 GUI 팔레트의 탭 분류: `Claude`, `워크스페이스`, `Git`, `시간`, `시스템`, `사용률`, `아이콘`, `구분자/포맷` (마지막 카테고리는 항상 노출되는 고정 영역).
 
 값이 null일 때 `?` 같은 placeholder 대신 `0` 또는 빈 문자열을 쓰는 게 기존 패턴 (예: `ctx_pct`, `ctx_bar`).
-
-> 구 `StatusBarConfig.ps1`의 `$ItemTypes`는 이제 사용되지 않지만 호환성 차원에서 보존 중. 새 변경은 `ItemCatalog.cs`에만.
 
 ## 아이콘 시스템
 

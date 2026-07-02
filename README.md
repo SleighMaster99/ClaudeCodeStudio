@@ -1,15 +1,14 @@
 # Claude Code StatusBar
 
 Claude Code 하단 `statusLine`을 멀티라인으로 커스터마이징하는 Windows용 도구.
-PowerShell 런타임 + WinForms GUI 편집기로 구성되어 있다.
+PowerShell 런타임 + C# WPF GUI 편집기로 구성되어 있다.
 
 ## 구성
 
 | 파일 | 역할 |
 | --- | --- |
 | `StatusLine.ps1` | statusLine 런타임. stdin JSON을 받아 `config.json` 레이아웃으로 출력 |
-| `StatusBarConfig.ps1` | WinForms GUI 편집기 (드래그&드롭 레이아웃 편집) |
-| `Edit-StatusBar.vbs` | 콘솔 없이 GUI를 띄우는 런처 |
+| `Editor/` | C# WPF GUI 편집기 (드래그&드롭 레이아웃 편집) |
 | `config.json` | 레이아웃 정의 (`rows` → 각 줄의 항목 배열) |
 | `usage_config.json` | 플랜별 5시간/주간 한도 (pro / max5x / max20x) |
 
@@ -17,6 +16,7 @@ PowerShell 런타임 + WinForms GUI 편집기로 구성되어 있다.
 
 - Windows 10/11
 - PowerShell 5+ (기본 내장)
+- .NET 9 SDK — GUI 편집기 빌드용
 - [Claude Code CLI](https://docs.claude.com/en/docs/claude-code)
 - (선택) `git` — `git_user`, `git_branch` 항목을 쓰려면 필요
 
@@ -27,7 +27,11 @@ PowerShell 런타임 + WinForms GUI 편집기로 구성되어 있다.
    git clone https://github.com/SleighMaster99/ClaudeCodeStatusBar.git
    cd ClaudeCodeStatusBar
    ```
-2. `Edit-StatusBar.vbs` 더블클릭 → GUI 편집기 실행
+2. GUI 편집기 빌드 & 실행:
+   ```powershell
+   dotnet build Editor/StatusBarEditor.csproj -c Release
+   & "Editor/bin/Release/net9.0-windows/StatusBarEditor.exe"
+   ```
 3. 레이아웃 조정 후 **"저장 & 적용"** 버튼 클릭
 
 "저장 & 적용"은 다음 두 가지를 수행한다:
@@ -77,7 +81,7 @@ GUI 팔레트의 카테고리별로:
 
 ## 디자인 제약
 
-- **Windows 전용** (PowerShell + WinForms)
+- **Windows 전용** (PowerShell + WPF)
 - **외부 의존성 없음** — .NET 표준, git, claude CLI만 사용
 - **에러는 조용히** — statusLine이 깨지지 않도록 모든 항목이 try/catch로 감싸져 있음
 - **출력 인코딩 UTF-8** 고정 (한글/이모지 깨짐 방지)
