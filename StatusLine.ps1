@@ -131,6 +131,7 @@ $script:Icons = @{
     'os'       = '💻'
     'h5'       = '⏱️'
     'week'     = '🗓️'
+    'fable'    = '🔮'
 }
 
 function Get-BarColor([double]$pct) {
@@ -436,6 +437,58 @@ function Get-CachedUsage {
     return $u
 }
 
+# ----- Fable weekly usage via Anthropic usage API -----
+# stdin rate_limits에는 모델별 주간 한도가 없어 /usage 화면과 동일한 API를 직접 조회한다.
+function Compute-FableUsage {
+    $credPath = Join-Path $env:USERPROFILE '.claude\.credentials.json'
+    if (-not (Test-Path $credPath)) { return $null }
+    $tok = $null
+    try {
+        $cred = Get-Content $credPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $oauth = $cred.claudeAiOauth
+        if ($null -eq $oauth -or -not $oauth.accessToken) { return $null }
+        if ($oauth.expiresAt -and [DateTimeOffset]::FromUnixTimeMilliseconds([long]$oauth.expiresAt) -le [DateTimeOffset]::UtcNow) { return $null }
+        $tok = $oauth.accessToken
+    } catch { return $null }
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $resp = Invoke-RestMethod -Uri 'https://api.anthropic.com/api/oauth/usage' -TimeoutSec 5 -Headers @{
+            'Authorization'  = "Bearer $tok"
+            'anthropic-beta' = 'oauth-2025-04-20'
+            'Content-Type'   = 'application/json'
+        }
+        foreach ($l in $resp.limits) {
+            if ($l.kind -eq 'weekly_scoped' -and $l.scope -and $l.scope.model -and ([string]$l.scope.model.display_name) -match 'fable') {
+                return @{ pct = [double]$l.percent; resets_at = [string]$l.resets_at }
+            }
+        }
+    } catch {}
+    return $null
+}
+
+function Get-CachedFableUsage {
+    $cachePath = Join-Path $PSScriptRoot '.fable_cache.json'
+    if (Test-Path $cachePath) {
+        try {
+            $cache = Get-Content $cachePath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $age = (Get-Date) - [datetime]$cache.at
+            if ($age.TotalSeconds -lt 60) {
+                if ($null -ne $cache.pct) {
+                    return @{ pct = [double]$cache.pct; resets_at = [string]$cache.resets_at }
+                }
+                return $null
+            }
+        } catch {}
+    }
+    $u = Compute-FableUsage
+    try {
+        $obj = @{ at = (Get-Date).ToString('o') }
+        if ($u) { $obj.pct = $u.pct; $obj.resets_at = $u.resets_at }
+        $obj | ConvertTo-Json | Set-Content $cachePath -Encoding UTF8
+    } catch {}
+    return $u
+}
+
 $script:_planType = $null
 function Get-CurrentPlan {
     if ($null -eq $script:_planType) { $script:_planType = Get-PlanType }
@@ -555,6 +608,16 @@ foreach ($row in $cfg.rows) {
                 }
                 [void]$sb.Append($bar)
             }
+            { $_ -in 'fable_bar','fable_bar_ascii','fable_bar_dot' } {
+                $u = Get-CachedFableUsage
+                $pct = if ($null -ne $u) { [double]$u.pct } else { 0 }
+                $bar = switch ($_) {
+                    'fable_bar_ascii' { Render-BarAscii $pct }
+                    'fable_bar_dot'   { Render-BarDot $pct }
+                    default           { Render-Bar $pct }
+                }
+                [void]$sb.Append($bar)
+            }
             'h5_pct'     {
                 $direct = Get-FieldRaw 'rate_limits.five_hour.used_percentage'
                 $pct = if ($null -ne $direct) { [int][Math]::Round([double]$direct) } else { 0 }
@@ -564,6 +627,11 @@ foreach ($row in $cfg.rows) {
                 $direct = Get-FieldRaw 'rate_limits.seven_day.used_percentage'
                 if ($null -eq $direct) { $direct = Get-FieldRaw 'rate_limits.weekly.used_percentage' }
                 $pct = if ($null -ne $direct) { [int][Math]::Round([double]$direct) } else { 0 }
+                [void]$sb.Append("${pct}%")
+            }
+            'fable_pct'  {
+                $u = Get-CachedFableUsage
+                $pct = if ($null -ne $u) { [int][Math]::Round([double]$u.pct) } else { 0 }
                 [void]$sb.Append("${pct}%")
             }
             'ctx_cost'   {
@@ -592,6 +660,19 @@ foreach ($row in $cfg.rows) {
                 $ra = Get-FieldRaw 'rate_limits.seven_day.resets_at'
                 if ($null -ne $ra) {
                     $resetAt = [DateTimeOffset]::FromUnixTimeSeconds([long]$ra).LocalDateTime
+                    $remain = $resetAt - (Get-Date)
+                    if ($remain.TotalSeconds -gt 0) {
+                        [void]$sb.Append((Format-Duration ($remain.TotalMilliseconds)))
+                    } else { [void]$sb.Append('0s') }
+                } else { [void]$sb.Append('-') }
+            }
+            'fable_remain' {
+                $u = Get-CachedFableUsage
+                $resetAt = $null
+                if ($null -ne $u -and $u.resets_at) {
+                    try { $resetAt = ([DateTimeOffset]::Parse([string]$u.resets_at, [System.Globalization.CultureInfo]::InvariantCulture)).LocalDateTime } catch {}
+                }
+                if ($null -ne $resetAt) {
                     $remain = $resetAt - (Get-Date)
                     if ($remain.TotalSeconds -gt 0) {
                         [void]$sb.Append((Format-Duration ($remain.TotalMilliseconds)))
