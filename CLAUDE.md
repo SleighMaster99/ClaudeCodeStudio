@@ -113,3 +113,8 @@ Unicode 이모지는 두 종류로 갈린다:
 - **에러는 조용히**: `StatusLine.ps1`은 `$ErrorActionPreference = 'SilentlyContinue'` + try/catch로 감싸 statusLine이 깨지지 않도록 함
 - **출력 인코딩 UTF-8** 고정 (한글/이모지 깨짐 방지)
 - **`config.json` 포맷 호환**: PowerShell이 읽던 형태를 그대로 유지 (`rows` → `[{type, value?}]`). System.Text.Json `JsonPropertyName`으로 소문자 매핑
+
+## Git 규칙
+
+- **main 직접 커밋 금지**: 모든 변경은 feature 브랜치(`feature/<주제>`)에서 작업한다.
+- 반영 흐름: feature 브랜치 커밋 → push → PR 생성 → main으로 머지. main에는 머지로만 반영한다.
