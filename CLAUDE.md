@@ -113,4 +113,5 @@ Unicode 이모지는 두 종류로 갈린다:
 ## Git 규칙
 
 - **main 직접 커밋 금지**: 모든 변경은 feature 브랜치(`feature/<주제>`)에서 작업한다.
-- 반영 흐름: feature 브랜치 커밋 → push → PR 생성 → main으로 머지. main에는 머지로만 반영한다.
+- 반영 흐름: feature 브랜치 커밋 → push → PR 생성 → main으로 **스쿼시 머지**. main에는 스쿼시 머지로만 반영한다 (`gh pr merge --squash`).
+- 저장소 설정에서 merge commit / rebase 머지는 비활성화되어 있다 (스쿼시만 허용).
