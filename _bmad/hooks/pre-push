@@ -1,0 +1,127 @@
+#!/bin/bash
+# BMad6GitHub - Pre-push Hook
+# 1. 로컬 기본 브랜치(master/main) 자동 동기화
+# 2. master/main 브랜치로 직접 푸시 방지
+# 3. 태그 푸시 시 CHANGELOG.md 업데이트 여부 검증
+
+# --- 로컬 기본 브랜치 자동 동기화 ---
+_sync_default_branch() {
+    # 기본 브랜치 감지
+    local default_branch=""
+    if git show-ref --verify --quiet refs/heads/master; then
+        default_branch="master"
+    elif git show-ref --verify --quiet refs/heads/main; then
+        default_branch="main"
+    fi
+
+    if [ -z "$default_branch" ]; then
+        return
+    fi
+
+    # origin 최신 정보 fetch
+    git fetch origin "$default_branch" --quiet 2>/dev/null || return
+
+    # 로컬과 origin 비교
+    local local_sha remote_sha
+    local_sha=$(git rev-parse "refs/heads/$default_branch" 2>/dev/null)
+    remote_sha=$(git rev-parse "refs/remotes/origin/$default_branch" 2>/dev/null)
+
+    if [ "$local_sha" = "$remote_sha" ]; then
+        return
+    fi
+
+    local behind
+    behind=$(git rev-list --count "$default_branch..origin/$default_branch" 2>/dev/null)
+
+    if [ "$behind" -eq 0 ] 2>/dev/null; then
+        return
+    fi
+
+    echo ""
+    echo "=========================================="
+    echo "  로컬 $default_branch 브랜치 자동 동기화"
+    echo "=========================================="
+    echo ""
+    echo "  로컬 $default_branch가 origin/$default_branch보다 ${behind}커밋 뒤처져 있습니다."
+
+    # fast-forward 가능 여부 확인
+    if git merge-base --is-ancestor "$default_branch" "origin/$default_branch"; then
+        local current_branch
+        current_branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+        if [ "$current_branch" != "$default_branch" ]; then
+            # 현재 브랜치가 기본 브랜치가 아니면 fetch로 직접 업데이트
+            git fetch origin "$default_branch:$default_branch" --quiet 2>/dev/null
+        else
+            # 현재 브랜치가 기본 브랜치면 pull
+            git pull origin "$default_branch" --ff-only --quiet 2>/dev/null
+        fi
+        echo "  -> fast-forward 자동 업데이트 완료!"
+
+        # 피처 브랜치에서 작업 중이면 merge 안내
+        if [ -n "$current_branch" ] && [ "$current_branch" != "$default_branch" ]; then
+            local branch_behind
+            branch_behind=$(git rev-list --count "$current_branch..${default_branch}" 2>/dev/null)
+            if [ "$branch_behind" -gt 0 ] 2>/dev/null; then
+                echo ""
+                echo "  현재 브랜치($current_branch)에 최신 $default_branch 반영이 필요합니다:"
+                echo "    git merge $default_branch"
+            fi
+        fi
+    else
+        echo "  -> fast-forward 불가 (로컬 $default_branch에 독립 커밋 존재)"
+        echo "  -> 수동으로 해결해 주세요: git checkout $default_branch && git pull"
+    fi
+    echo ""
+}
+
+_sync_default_branch
+
+# --- 푸시 대상 분석 ---
+while read local_ref local_sha remote_ref remote_sha; do
+    # master/main 직접 푸시 차단
+    if echo "$remote_ref" | grep -qE "refs/heads/(master|main)$"; then
+        echo ""
+        echo "=========================================="
+        echo "  ERROR: master/main 브랜치로 직접 푸시 불가!"
+        echo "=========================================="
+        echo ""
+        echo "BMad6GitHub 워크플로우를 따라주세요:"
+        echo ""
+        echo "  1. Feature 브랜치에서 작업"
+        echo "  2. PR 생성: gh pr create"
+        echo "  3. 리뷰 후 머지"
+        echo ""
+        exit 1
+    fi
+
+    # 태그 푸시 시 CHANGELOG.md 업데이트 검증
+    if echo "$remote_ref" | grep -qE "^refs/tags/"; then
+        tag_name=$(echo "$remote_ref" | sed 's|refs/tags/||')
+
+        # 이전 태그 찾기
+        prev_tag=$(git tag --sort=-version:refname | grep -v "^${tag_name}$" | head -1)
+
+        if [ -n "$prev_tag" ]; then
+            # 이전 태그 이후 CHANGELOG.md가 변경되었는지 확인
+            changelog_changed=$(git diff --name-only "$prev_tag"..HEAD -- CHANGELOG.md 2>/dev/null)
+
+            if [ -z "$changelog_changed" ]; then
+                echo ""
+                echo "=========================================="
+                echo "  ERROR: CHANGELOG.md가 업데이트되지 않았습니다!"
+                echo "=========================================="
+                echo ""
+                echo "태그 '${tag_name}' 푸시 전에 CHANGELOG.md를 업데이트해 주세요."
+                echo ""
+                echo "  1. /bmad-os-draft-changelog 실행"
+                echo "  2. CHANGELOG.md 커밋"
+                echo "  3. 태그 재생성 후 푸시"
+                echo ""
+                exit 1
+            fi
+        fi
+    fi
+done
+
+exit 0

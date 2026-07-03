@@ -1,0 +1,28 @@
+#!/bin/bash
+# BMad6GitHub - Pre-commit Hook
+# master/main 브랜치에서 직접 커밋 방지
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ]; then
+    echo ""
+    echo "=========================================="
+    echo "  ERROR: master 브랜치에 직접 커밋 불가!"
+    echo "=========================================="
+    echo ""
+    echo "BMad6GitHub 워크플로우를 따라주세요:"
+    echo ""
+    echo "  1. Issue 생성:  gh issue create --title '...'"
+    echo "  2. 브랜치 생성: git checkout -b feat/X-Y-description"
+    echo "  3. 커밋:        git commit -m 'feat(story-X.Y): ... (#issue)'"
+    echo "  4. PR 생성:     gh pr create"
+    echo ""
+    echo "현재 변경사항을 stash하고 브랜치에서 작업하세요:"
+    echo "  git stash"
+    echo "  git checkout -b feat/X-Y-description"
+    echo "  git stash pop"
+    echo ""
+    exit 1
+fi
+
+exit 0

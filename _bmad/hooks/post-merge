@@ -1,0 +1,38 @@
+#!/bin/bash
+# BMad6GitHub - Post-merge Hook
+# 원격에서 삭제된 브랜치의 로컬 사본을 자동 정리
+
+# 원격 추적 정보 갱신 (삭제된 원격 브랜치 반영)
+git fetch --prune --quiet 2>/dev/null
+
+# [gone] 상태인 로컬 브랜치 추출
+gone_branches=$(git branch -vv | grep '\[.*: gone\]' | awk '{print $1}')
+
+if [ -z "$gone_branches" ]; then
+    exit 0
+fi
+
+echo ""
+echo "=========================================="
+echo "  로컬 브랜치 자동 정리"
+echo "=========================================="
+echo ""
+
+deleted=0
+skipped=0
+
+for branch in $gone_branches; do
+    if git branch -d "$branch" 2>/dev/null; then
+        echo "  삭제: $branch"
+        deleted=$((deleted + 1))
+    else
+        echo "  건너뜀 (머지되지 않음): $branch"
+        skipped=$((skipped + 1))
+    fi
+done
+
+echo ""
+echo "  결과: ${deleted}개 삭제, ${skipped}개 건너뜀"
+echo ""
+
+exit 0

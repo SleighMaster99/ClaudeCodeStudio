@@ -1,0 +1,13 @@
+name: public-release-setup
+description: "Private 저장소에서 Public 릴리스 저장소로 자동 배포 설정"
+author: "BMAD"
+
+config_source: "{project-root}/_bmad/bmm/config.yaml"
+installed_path: "{project-root}/_bmad/bmm/workflows/public-release-setup"
+instructions: "{installed_path}/instructions.xml"
+template: false
+standalone: true
+
+variables:
+  release_templates: "{project-root}/_bmad/bmm/data/public-release-templates"
+  target_workflows_dir: "{project-root}/.github/workflows"

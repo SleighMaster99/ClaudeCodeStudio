@@ -1,0 +1,439 @@
+<workflow>
+  <critical>The workflow execution engine is governed by: {project-root}/_bmad/core/tasks/workflow.xml</critical>
+  <critical>You MUST have already loaded and processed: {installed_path}/workflow.yaml</critical>
+  <critical>Communicate all responses in {communication_language}</critical>
+
+  <step n="1" goal="환경 확인">
+    <critical>🔧 PUBLIC RELEASE SETUP - Private → Public 릴리스 자동화 설정</critical>
+
+    <output>📋 **Public 릴리스 자동화 설정**
+
+      이 워크플로우는 Private 저장소에서 태그 push 시 Public 저장소에
+      자동으로 릴리스(바이너리 + 문서)를 배포하는 파이프라인을 설정합니다:
+
+      - Public 릴리스 저장소 생성
+      - GitHub Actions 워크플로우 생성 (release-to-public.yml)
+      - Secrets (PAT) 설정 가이드
+
+    </output>
+
+    <action>git repository 확인: git rev-parse --git-dir</action>
+    <check if="git repository NOT detected">
+      <output>⚠️ Git 저장소가 감지되지 않습니다. Git 저장소에서 실행해주세요.</output>
+      <action>HALT</action>
+    </check>
+
+    <action>gh CLI 확인: gh --version</action>
+    <check if="gh CLI not installed">
+      <output>⚠️ GitHub CLI(gh)가 설치되지 않았습니다.
+
+        설치 방법:
+        - Windows: winget install GitHub.cli
+        - macOS: brew install gh
+        - Linux: https://github.com/cli/cli#installation
+
+        설치 후 `gh auth login`으로 인증해주세요.
+      </output>
+      <action>HALT</action>
+    </check>
+
+    <action>gh CLI 인증 확인: gh auth status</action>
+    <check if="gh auth 실패">
+      <output>⚠️ GitHub CLI 인증이 필요합니다.</output>
+      <ask>`gh auth login`을 실행하시겠습니까? [y/n]</ask>
+      <check if="user confirms">
+        <action>gh auth login 안내 제공</action>
+      </check>
+      <check if="user cancels">
+        <action>HALT</action>
+      </check>
+    </check>
+
+    <action>.github/workflows 디렉토리 확인 (없으면 생성)</action>
+
+    <action>현재 저장소 정보 추출: gh repo view --json owner,name -q '.owner.login + "/" + .name'</action>
+    <action>{{private_owner}} = owner, {{private_repo}} = name</action>
+    <output>✅ 환경 확인 완료
+      - Private 저장소: {{private_owner}}/{{private_repo}}
+    </output>
+  </step>
+
+  <step n="2" goal="프로젝트 정보 수집">
+    <critical>📝 PROJECT INFO - 빌드 및 릴리스 정보 수집</critical>
+
+    <ask>Public 릴리스 저장소 이름을 입력해주세요 (예: {{private_repo}}-releases):</ask>
+    <action>{{public_repo_name}} = 사용자 입력값</action>
+
+    <ask>프로젝트 설명을 입력해주세요 (Public 저장소 description):</ask>
+    <action>{{project_description}} = 사용자 입력값</action>
+
+    <output>📋 **빌드 런타임 선택**
+
+      프로젝트의 빌드 런타임을 선택해주세요:
+      1. Node.js — npm ci / npm run build
+      2. Go — go build
+      3. Rust — cargo build --release
+      4. .NET — dotnet publish
+      5. Python — python -m build
+      6. Java — ./gradlew build
+      7. 커스텀 — 직접 설정
+    </output>
+
+    <ask>빌드 런타임을 선택해주세요: [1-7]</ask>
+
+    <check if="user chooses 1 (Node.js)">
+      <action>{{setup_action}} = "actions/setup-node@v4"</action>
+      <action>{{setup_with}} = "node-version: '20'"</action>
+      <action>{{install_cmd}} = "npm ci"</action>
+      <action>{{build_cmd}} = "npm run build"</action>
+      <action>{{artifact_path}} = "dist/"</action>
+      <action>{{runtime_label}} = "Node.js"</action>
+    </check>
+
+    <check if="user chooses 2 (Go)">
+      <action>{{setup_action}} = "actions/setup-go@v5"</action>
+      <action>{{setup_with}} = "go-version: 'stable'"</action>
+      <action>{{install_cmd}} = ""</action>
+      <action>{{build_cmd}} = "go build -o ./build/ ./..."</action>
+      <action>{{artifact_path}} = "build/"</action>
+      <action>{{runtime_label}} = "Go"</action>
+    </check>
+
+    <check if="user chooses 3 (Rust)">
+      <action>{{setup_action}} = "dtolnay/rust-toolchain@stable"</action>
+      <action>{{setup_with}} = ""</action>
+      <action>{{install_cmd}} = ""</action>
+      <action>{{build_cmd}} = "cargo build --release"</action>
+      <action>{{artifact_path}} = "target/release/"</action>
+      <action>{{runtime_label}} = "Rust"</action>
+    </check>
+
+    <check if="user chooses 4 (.NET)">
+      <action>{{setup_action}} = "actions/setup-dotnet@v4"</action>
+      <action>{{setup_with}} = "dotnet-version: '8.0.x'"</action>
+      <action>{{install_cmd}} = "dotnet restore"</action>
+      <action>{{build_cmd}} = "dotnet publish -c Release -o ./publish"</action>
+      <action>{{artifact_path}} = "publish/"</action>
+      <action>{{runtime_label}} = ".NET"</action>
+    </check>
+
+    <check if="user chooses 5 (Python)">
+      <action>{{setup_action}} = "actions/setup-python@v5"</action>
+      <action>{{setup_with}} = "python-version: '3.x'"</action>
+      <action>{{install_cmd}} = "pip install -r requirements.txt"</action>
+      <action>{{build_cmd}} = "python -m build"</action>
+      <action>{{artifact_path}} = "dist/"</action>
+      <action>{{runtime_label}} = "Python"</action>
+    </check>
+
+    <check if="user chooses 6 (Java)">
+      <action>{{setup_action}} = "actions/setup-java@v4"</action>
+      <action>{{setup_with}} = "distribution: 'temurin'\n        java-version: '21'"</action>
+      <action>{{install_cmd}} = ""</action>
+      <action>{{build_cmd}} = "./gradlew build"</action>
+      <action>{{artifact_path}} = "build/libs/"</action>
+      <action>{{runtime_label}} = "Java"</action>
+    </check>
+
+    <check if="user chooses 7 (커스텀)">
+      <ask>런타임 setup action을 입력해주세요 (없으면 빈 값):</ask>
+      <action>{{setup_action}} = 사용자 입력값</action>
+      <check if="{{setup_action}} is not empty">
+        <ask>setup action의 with 매개변수를 입력해주세요 (없으면 빈 값):</ask>
+        <action>{{setup_with}} = 사용자 입력값</action>
+      </check>
+      <ask>의존성 설치 명령어를 입력해주세요 (없으면 빈 값):</ask>
+      <action>{{install_cmd}} = 사용자 입력값</action>
+      <ask>빌드 명령어를 입력해주세요:</ask>
+      <action>{{build_cmd}} = 사용자 입력값</action>
+      <ask>빌드 결과물 경로를 입력해주세요:</ask>
+      <action>{{artifact_path}} = 사용자 입력값</action>
+      <action>{{runtime_label}} = "커스텀"</action>
+    </check>
+
+    <output>ℹ️ 기본값이 설정되었습니다. 다음에서 세부 사항을 조정할 수 있습니다.</output>
+
+    <ask>빌드 명령어를 수정하시겠습니까? (현재: {{build_cmd}}) [y/n]</ask>
+    <check if="user confirms">
+      <ask>새 빌드 명령어를 입력해주세요:</ask>
+      <action>{{build_cmd}} = 사용자 입력값</action>
+    </check>
+
+    <ask>설치 명령어를 수정하시겠습니까? (현재: {{install_cmd}}) [y/n]</ask>
+    <check if="user confirms">
+      <ask>새 설치 명령어를 입력해주세요:</ask>
+      <action>{{install_cmd}} = 사용자 입력값</action>
+    </check>
+
+    <ask>빌드 결과물 경로를 수정하시겠습니까? (현재: {{artifact_path}}) [y/n]</ask>
+    <check if="user confirms">
+      <ask>새 결과물 경로를 입력해주세요:</ask>
+      <action>{{artifact_path}} = 사용자 입력값</action>
+    </check>
+
+    <ask>릴리스에 첨부할 파일 패턴을 입력해주세요 (예: dist/*.zip, dist/*.tar.gz 등, 여러 줄 가능):</ask>
+    <action>{{artifact_patterns}} = 사용자 입력값</action>
+
+    <ask>라이선스를 선택해주세요:
+      1. MIT
+      2. Apache-2.0
+      3. GPL-3.0
+      4. BSD-3-Clause
+      5. 없음 (건너뛰기)
+    </ask>
+    <action>{{license_type}} = 사용자 선택값</action>
+
+    <output>📋 **수집된 정보 요약**
+
+      - Public 저장소: {{private_owner}}/{{public_repo_name}}
+      - 설명: {{project_description}}
+      - 런타임: {{runtime_label}}
+      - 빌드: {{build_cmd}}
+      - 설치: {{install_cmd}}
+      - 결과물 경로: {{artifact_path}}
+      - 릴리스 패턴: {{artifact_patterns}}
+      - 라이선스: {{license_type}}
+    </output>
+
+    <ask>위 정보가 맞습니까? [y/n]</ask>
+    <check if="user cancels">
+      <output>❌ 설정을 취소합니다. 다시 실행해주세요.</output>
+      <action>HALT</action>
+    </check>
+  </step>
+
+  <step n="3" goal="Public 저장소 생성">
+    <critical>🏗️ CREATE PUBLIC REPO - Public 릴리스 저장소 생성</critical>
+
+    <action>저장소 존재 확인: gh repo view {{private_owner}}/{{public_repo_name}} 2>/dev/null</action>
+
+    <check if="저장소 이미 존재">
+      <output>⚠️ {{private_owner}}/{{public_repo_name}} 저장소가 이미 존재합니다.</output>
+      <ask>기존 저장소를 사용하시겠습니까? [y/n]</ask>
+      <check if="user cancels">
+        <output>❌ 설정을 취소합니다.</output>
+        <action>HALT</action>
+      </check>
+      <output>ℹ️ 기존 저장소를 사용합니다.</output>
+    </check>
+
+    <check if="저장소 없음">
+      <action>gh repo create {{private_owner}}/{{public_repo_name}} --public --description "{{project_description}}"</action>
+      <output>✅ Public 저장소 생성됨: {{private_owner}}/{{public_repo_name}}</output>
+
+      <!-- 초기 파일 생성 및 Push -->
+      <action>임시 디렉토리 생성 및 이동</action>
+      <action>git clone https://github.com/{{private_owner}}/{{public_repo_name}}.git temp-public-repo</action>
+      <action>cd temp-public-repo</action>
+
+      <!-- README.md -->
+      <action>README.md 생성:
+        # {{public_repo_name}}
+
+        {{project_description}}
+
+        ## 설치
+
+        [릴리스 페이지](https://github.com/{{private_owner}}/{{public_repo_name}}/releases)에서
+        최신 버전을 다운로드하세요.
+
+        ## 라이선스
+
+        {{license_type}} 라이선스에 따라 배포됩니다.
+      </action>
+
+      <!-- CHANGELOG.md -->
+      <action>CHANGELOG.md 생성:
+        # Changelog
+
+        이 프로젝트의 주요 변경사항을 기록합니다.
+
+        형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
+        [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
+      </action>
+
+      <!-- LICENSE (선택된 경우) -->
+      <check if="{{license_type}} != 없음">
+        <action>LICENSE 파일 생성 (선택된 라이선스 유형에 맞는 전문)</action>
+      </check>
+
+      <action>git add -A</action>
+      <action>git commit -m "chore: 저장소 초기화
+
+Generated by BMAD Method - Public Release Setup"</action>
+      <action>git push origin main</action>
+      <action>임시 디렉토리 정리 (cd .. && rm -rf temp-public-repo)</action>
+
+      <output>✅ 초기 파일 Push 완료:
+        - README.md
+        - CHANGELOG.md
+        {{license_file_note}}
+      </output>
+    </check>
+  </step>
+
+  <step n="4" goal="Actions 워크플로우 생성">
+    <critical>⚙️ ACTIONS WORKFLOW - release-to-public.yml 생성</critical>
+
+    <action>{{release_templates}}/release-to-public.yml 기본 템플릿 로드</action>
+
+    <action>플레이스홀더 교체:
+      - __PUBLIC_REPO__ → {{private_owner}}/{{public_repo_name}}
+      - __SETUP_ACTION__ → {{setup_action}} (비어있으면 해당 step 제거)
+      - __SETUP_WITH__ → {{setup_with}} (비어있으면 with 블록 제거)
+      - __INSTALL_CMD__ → {{install_cmd}} (비어있으면 해당 step 제거)
+      - __BUILD_CMD__ → {{build_cmd}}
+      - __ARTIFACT_PATH__ → {{artifact_path}}
+      - __ARTIFACT_PATTERNS__ → {{artifact_patterns}}
+    </action>
+
+    <check if="{{target_workflows_dir}}/release-to-public.yml 이미 존재">
+      <output>⚠️ release-to-public.yml이 이미 존재합니다.</output>
+      <ask>덮어쓰시겠습니까? [y/n]</ask>
+      <check if="user cancels">
+        <output>ℹ️ 기존 파일을 유지합니다.</output>
+      </check>
+      <check if="user confirms">
+        <action>기존 파일 백업: release-to-public.yml.backup</action>
+        <action>생성된 워크플로우를 {{target_workflows_dir}}/release-to-public.yml에 저장</action>
+        <output>✅ release-to-public.yml 덮어쓰기 완료 (백업 생성됨)</output>
+      </check>
+    </check>
+
+    <check if="{{target_workflows_dir}}/release-to-public.yml 없음">
+      <action>생성된 워크플로우를 {{target_workflows_dir}}/release-to-public.yml에 저장</action>
+      <output>✅ release-to-public.yml 생성 완료</output>
+    </check>
+
+    <output>📄 **생성된 워크플로우 요약**
+
+      파일: .github/workflows/release-to-public.yml
+      트리거: v* 태그 push
+      동작:
+      1. 소스 체크아웃
+      2. {{runtime_label}} 런타임 설정
+      3. 의존성 설치 및 빌드
+      4. CHANGELOG에서 릴리스 노트 추출
+      5. Public 저장소에 릴리스 생성 + 아티팩트 첨부
+      6. Public 저장소에 CHANGELOG.md 동기화
+    </output>
+  </step>
+
+  <step n="5" goal="Secrets 설정">
+    <critical>🔑 SECRETS - GitHub Actions Secrets 설정</critical>
+
+    <output>📋 **Fine-grained Personal Access Token (PAT) 생성 가이드**
+
+      Public 저장소에 릴리스를 배포하려면 PAT가 필요합니다.
+
+      **생성 방법:**
+      1. GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens
+      2. "Generate new token" 클릭
+      3. 설정:
+         - Token name: `public-release-{{public_repo_name}}`
+         - Expiration: 원하는 기간 (권장: 90일, 이후 갱신)
+         - Resource owner: {{private_owner}}
+         - Repository access: "Only select repositories" → **{{public_repo_name}}** 선택
+         - Permissions:
+           - Contents: Read and write
+           - Metadata: Read-only (자동 선택됨)
+      4. "Generate token" 클릭 후 토큰 복사
+
+      ⚠️ 토큰은 한 번만 표시됩니다. 반드시 복사해두세요!
+    </output>
+
+    <ask>PAT를 생성하셨습니까? Secret을 설정할 준비가 되셨습니까? [y/n]</ask>
+
+    <check if="user confirms">
+      <output>ℹ️ 다음 명령어로 Secret을 설정합니다:
+        `gh secret set PUBLIC_REPO_TOKEN -R {{private_owner}}/{{private_repo}}`
+
+        프롬프트에 복사한 PAT 토큰을 붙여넣어주세요.
+      </output>
+
+      <action>gh secret set PUBLIC_REPO_TOKEN -R {{private_owner}}/{{private_repo}}</action>
+
+      <check if="secret 설정 성공">
+        <output>✅ PUBLIC_REPO_TOKEN Secret 설정 완료</output>
+      </check>
+
+      <check if="secret 설정 실패">
+        <output>⚠️ Secret 설정에 실패했습니다.
+
+          수동으로 설정하려면:
+          1. GitHub → {{private_owner}}/{{private_repo}} → Settings → Secrets and variables → Actions
+          2. "New repository secret" 클릭
+          3. Name: PUBLIC_REPO_TOKEN
+          4. Secret: 생성한 PAT 토큰
+          5. "Add secret" 클릭
+        </output>
+      </check>
+    </check>
+
+    <check if="user cancels">
+      <output>ℹ️ Secret 설정을 건너뜁니다.
+
+        나중에 설정하려면:
+        `gh secret set PUBLIC_REPO_TOKEN -R {{private_owner}}/{{private_repo}}`
+
+        또는 GitHub 웹에서:
+        {{private_owner}}/{{private_repo}} → Settings → Secrets and variables → Actions
+      </output>
+    </check>
+  </step>
+
+  <step n="6" goal="완료 및 안내">
+    <output>🎉 **Public 릴리스 자동화 설정 완료!**
+
+      **설정된 항목:**
+      ✅ Public 저장소: {{private_owner}}/{{public_repo_name}}
+      ✅ Actions 워크플로우: .github/workflows/release-to-public.yml
+      ✅ Secret: PUBLIC_REPO_TOKEN
+
+      **릴리스 방법:**
+      1. CHANGELOG.md에 새 버전 섹션 추가
+      2. 태그 생성 및 Push:
+         ```
+         git tag v1.0.0
+         git push origin v1.0.0
+         ```
+      3. GitHub Actions가 자동으로:
+         - 프로젝트 빌드
+         - CHANGELOG에서 릴리스 노트 추출
+         - Public 저장소에 릴리스 생성 + 아티팩트 첨부
+         - Public 저장소에 CHANGELOG.md 동기화
+
+      **확인:**
+      - Private Actions: https://github.com/{{private_owner}}/{{private_repo}}/actions
+      - Public Releases: https://github.com/{{private_owner}}/{{public_repo_name}}/releases
+
+      **주의사항:**
+      - PAT 토큰은 만료 기간이 있으므로 갱신이 필요합니다
+      - Private 저장소의 소스 코드는 Public에 노출되지 않습니다
+      - 릴리스에 첨부되는 아티팩트만 공개됩니다
+    </output>
+
+    <ask>변경사항(.github/workflows/release-to-public.yml)을 지금 커밋하시겠습니까? [y/n]</ask>
+
+    <check if="user confirms">
+      <action>git add .github/workflows/release-to-public.yml</action>
+      <action>git commit -m "ci: Public 릴리스 자동 배포 워크플로우 추가
+
+- release-to-public.yml: v* 태그 push 시 Public 저장소에 릴리스 배포
+- 빌드 → 아티팩트 첨부 → CHANGELOG 동기화
+
+Generated by BMAD Method"</action>
+      <output>✅ 커밋 완료!
+
+        Push하려면: `git push origin {{current_branch}}`
+      </output>
+
+      <ask>지금 Push하시겠습니까? [y/n]</ask>
+      <check if="user confirms">
+        <action>git push origin {{current_branch}}</action>
+        <output>✅ Push 완료!</output>
+      </check>
+    </check>
+  </step>
+
+</workflow>

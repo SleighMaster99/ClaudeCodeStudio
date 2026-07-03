@@ -1,0 +1,436 @@
+<workflow>
+  <critical>The workflow execution engine is governed by: {project-root}/_bmad/core/tasks/workflow.xml</critical>
+  <critical>You MUST have already loaded and processed: {installed_path}/workflow.yaml</critical>
+  <critical>Communicate all responses in {communication_language}</critical>
+
+  <critical>IMPORT ISSUE - GitHub 이슈를 BMAD 스토리로 변환</critical>
+
+  <overview>
+    이 워크플로우는 외부 사용자가 작성한 GitHub 이슈를 BMAD 스토리 문서로 변환합니다.
+    Create Story와 달리 새 이슈를 생성하지 않고, 기존 이슈를 그대로 활용합니다.
+  </overview>
+
+  <!-- ============================================== -->
+  <!-- STEP 1: 환경 검증 및 이슈 번호 입력 -->
+  <!-- ============================================== -->
+  <step n="1" goal="환경 검증 및 이슈 번호 입력">
+    <action>Git 저장소 확인:
+      git rev-parse --git-dir
+    </action>
+    <check if="git repository NOT detected">
+      <output>Git 저장소가 감지되지 않습니다. Git 저장소에서 실행해주세요.</output>
+      <action>HALT</action>
+    </check>
+
+    <action>GitHub CLI 인증 확인:
+      gh auth status
+    </action>
+    <check if="gh auth 실패">
+      <output>GitHub CLI 인증이 필요합니다. `gh auth login`을 실행하세요.</output>
+      <action>HALT</action>
+    </check>
+
+    <check if="{{issue_numbers}} is empty">
+      <ask>가져올 GitHub 이슈 번호를 입력하세요:
+        - 단일 이슈: 42
+        - 복수 이슈: 42,43,45
+      </ask>
+      <action>입력값을 {{issue_numbers}}에 저장</action>
+    </check>
+
+    <action>이슈 번호 파싱:
+      - 쉼표로 분리하여 배열로 변환
+      - 각 번호에서 # 기호 제거 (있을 경우)
+      - 숫자만 추출하여 유효성 검증
+    </action>
+
+    <action>각 이슈 존재 여부 확인:
+      for each issue_num in issue_numbers:
+        gh issue view {{issue_num}} --json number 2>/dev/null
+        if failed: 해당 이슈를 목록에서 제외하고 경고 출력
+    </action>
+
+    <check if="유효한 이슈가 없음">
+      <output>유효한 이슈가 없습니다. 이슈 번호를 확인해주세요.</output>
+      <action>HALT</action>
+    </check>
+
+    <output>{{valid_issue_count}}개의 유효한 이슈를 처리합니다.</output>
+  </step>
+
+  <!-- ============================================== -->
+  <!-- STEP 2: 이슈 정보 가져오기 및 분석 -->
+  <!-- ============================================== -->
+  <step n="2" goal="이슈 정보 가져오기 및 분석">
+    <iterate>For each valid issue number:</iterate>
+
+    <action>이슈 상세 정보 조회:
+      gh issue view {{issue_num}} --json number,url,title,body,labels,assignees,milestone,state,createdAt,author
+    </action>
+
+    <action>이슈 타입 결정 (story_type):
+      라벨 우선 분석:
+      - "bug", "fix" 라벨 포함 → fix
+      - "feature", "enhancement" 라벨 포함 → feat
+      - "refactor", "improvement", "performance" 라벨 포함 → refactor
+      - "documentation", "docs" 라벨 포함 → docs
+      - "test", "testing" 라벨 포함 → test
+      - "chore", "maintenance", "config" 라벨 포함 → chore
+
+      라벨 없을 경우 내용 분석:
+      - 제목/본문에 "버그", "오류", "error", "bug", "fix" 키워드 → fix
+      - 제목/본문에 "새 기능", "추가", "new", "feature", "add" 키워드 → feat
+      - 제목/본문에 "리팩토링", "개선", "refactor", "improve" 키워드 → refactor
+      - 기본값: feat
+    </action>
+
+    <action>우선순위 제안:
+      - "critical", "urgent", "P0" 라벨 → P0 (긴급)
+      - "high", "P1" 라벨 → P1 (높음)
+      - "medium", "P2" 라벨 또는 기본 → P2 (보통)
+      - "low", "P3" 라벨 → P3 (낮음)
+    </action>
+
+    <action>이슈 정보 품질 평가:
+      - body가 비어있거나 50자 미만 → 정보 부족
+      - Acceptance Criteria 형태의 체크리스트가 없음 → AC 보완 필요
+    </action>
+
+    <check if="이슈 정보 부족">
+      <output>이슈 #{{issue_num}}의 정보가 부족합니다.
+
+        **현재 정보:**
+        - 제목: {{issue_title}}
+        - 본문: {{issue_body_preview}}... ({{body_length}}자)
+
+        스토리 작성을 위해 추가 컨텍스트가 필요합니다.
+      </output>
+      <ask>추가 컨텍스트를 입력하세요 (또는 's'로 건너뛰기, 'c'로 현재 정보로 계속):</ask>
+      <check if="user provides 's'">
+        <action>해당 이슈 건너뛰기</action>
+        <goto step="2-next-iteration" />
+      </check>
+      <check if="user provides context">
+        <action>추가 컨텍스트를 이슈 정보에 병합:
+          {{additional_context}} 저장
+        </action>
+      </check>
+    </check>
+
+    <output>**이슈 #{{issue_num}} 분석 완료**
+      - 제목: {{issue_title}}
+      - 타입: {{story_type}}
+      - 우선순위: {{priority}}
+      - 라벨: {{labels}}
+      - 작성자: {{author}}
+    </output>
+  </step>
+
+  <!-- ============================================== -->
+  <!-- STEP 3: 기존 에픽 매칭 -->
+  <!-- ============================================== -->
+  <step n="3" goal="기존 에픽 매칭">
+    <invoke-protocol name="discover_inputs" />
+
+    <action>에픽 파일에서 모든 에픽 정보 추출:
+      - {epics_artifacts}/*epic*.md 파일들 로드
+      - "## Epic N:" 또는 "# Epic N:" 패턴으로 에픽 찾기
+      - 각 에픽의 번호, 제목, 설명 추출
+      - 현재 스토리 개수 파악 (마지막 스토리 번호)
+    </action>
+
+    <check if="에픽 파일이 없거나 에픽을 찾을 수 없음">
+      <output>에픽 파일을 찾을 수 없습니다.
+
+        **옵션:**
+        1. 새 에픽을 생성합니다 (Epic 1로 시작)
+        2. 에픽 파일 경로를 직접 지정합니다
+
+        ※ Sprint Planning을 먼저 실행하는 것을 권장합니다.
+      </output>
+      <ask>어떻게 진행할까요? (1: 새 에픽 생성, 2: 경로 지정, c: 취소):</ask>
+    </check>
+
+    <action>각 이슈에 대해 에픽 매칭 수행:
+      - 이슈 제목과 본문에서 핵심 키워드 추출
+      - 각 에픽의 제목, 설명과 텍스트 유사도 분석
+      - 관련성 높은 상위 3개 에픽 선별 (또는 전체 에픽 수가 3개 미만이면 모두)
+    </action>
+
+    <output>**에픽 매칭 결과** (이슈 #{{issue_num}}: {{issue_title}})
+
+      **추천 에픽:**
+      {{for each matched_epic}}
+      {{index}}. [Epic {{epic_num}}] {{epic_title}}
+         - 현재 스토리 수: {{story_count}}개
+         - 관련도: {{match_reason}}
+      {{end for}}
+
+      **기타 옵션:**
+      - [N] 새 에픽 생성
+      - [E] 에픽 번호 직접 입력
+    </output>
+
+    <ask>이슈 #{{issue_num}}을(를) 어떤 에픽에 추가할까요? (번호, N, 또는 E):</ask>
+
+    <check if="user selects existing epic (number)">
+      <action>선택된 에픽 번호 저장: {{selected_epic}}</action>
+      <action>해당 에픽의 마지막 스토리 번호 확인</action>
+      <action>새 스토리 번호 계산: {{last_story_num}} + 1</action>
+    </check>
+
+    <check if="user selects 'N' (new epic)">
+      <ask>새 에픽 제목을 입력하세요:</ask>
+      <action>새 에픽 번호 계산: 마지막 에픽 번호 + 1</action>
+      <action>에픽 파일에 새 에픽 섹션 추가:
+        ## Epic {{new_epic_num}}: {{new_epic_title}}
+
+        ### Overview
+        {{issue_title}}을 해결하기 위한 에픽
+
+        ### Stories
+        (스토리가 아래에서 추가됩니다)
+      </action>
+      <action>스토리 번호: 1</action>
+      <output>새 에픽 {{new_epic_num}} 생성됨: {{new_epic_title}}</output>
+    </check>
+
+    <check if="user selects 'E' (manual entry)">
+      <ask>에픽 번호를 입력하세요:</ask>
+      <action>입력된 에픽 존재 여부 확인</action>
+      <check if="에픽이 존재하지 않음">
+        <output>에픽 {{input_epic_num}}을(를) 찾을 수 없습니다.</output>
+        <goto step="3" />
+      </check>
+    </check>
+  </step>
+
+  <!-- ============================================== -->
+  <!-- STEP 4: 스토리 문서 생성 -->
+  <!-- ============================================== -->
+  <step n="4" goal="스토리 문서 생성">
+    <action>스토리 키 생성:
+      - 제목을 kebab-case로 변환 (소문자, 공백→하이픈, 특수문자 제거)
+      - 형식: {{epic_num}}-{{story_num}}-{{title_kebab}}
+      - 예: 1-3-fix-login-error
+    </action>
+
+    <action>스토리 파일 경로 결정:
+      {{story_file_path}} = {story_dir}/{{story_key}}.md
+    </action>
+
+    <action>이슈 본문에서 스토리 요소 추출:
+      1. User Story 형식 탐지:
+         - "As a... I want... so that..." 패턴 검색
+         - 있으면 그대로 사용, 없으면 자동 생성
+
+      2. Acceptance Criteria 추출:
+         - "## Acceptance Criteria", "### AC", "- [ ]" 체크박스 패턴 검색
+         - 번호 목록 형태도 AC로 간주
+
+      3. 기술 요구사항 추출:
+         - 코드 블록, 파일 경로, 기술 용어 추출
+    </action>
+
+    <check if="User Story 형식 없음">
+      <action>이슈 정보에서 User Story 자동 생성:
+        As a [user/developer],
+        I want {{issue_title_action}},
+        so that {{benefit_from_body_or_default}}.
+      </action>
+    </check>
+
+    <check if="Acceptance Criteria 없음 또는 부족">
+      <action>이슈 본문에서 AC 후보 추출 또는 기본 AC 생성</action>
+      <output>자동 생성된 Acceptance Criteria:
+        {{generated_ac}}
+      </output>
+      <ask>[y] 확인 / [e] 편집 / [a] 추가:</ask>
+      <check if="user selects 'e' or 'a'">
+        <ask>Acceptance Criteria를 입력하세요 (각 줄에 하나씩):</ask>
+        <action>사용자 입력을 AC에 추가/대체</action>
+      </check>
+    </check>
+
+    <action>브랜치명 생성:
+      {{branch_name}} = {{story_type}}/{{story_key}}
+      예: fix/1-3-fix-login-error
+    </action>
+
+    <action>template.md 기반 스토리 파일 생성:
+      template: {project-root}/_bmad/bmm/workflows/4-implementation/create-story/template.md
+
+      치환 변수:
+      - {{epic_num}} → 에픽 번호
+      - {{story_num}} → 스토리 번호
+      - {{story_title}} → 이슈 제목
+      - {{story_type}} → 스토리 타입 (feat/fix/refactor 등)
+      - {{role}} → User Story의 역할
+      - {{action}} → User Story의 행동
+      - {{benefit}} → User Story의 이점
+    </action>
+
+    <action>GitHub Tracking 섹션 채우기:
+      | 항목 | 값 |
+      |------|-----|
+      | Issue | #{{issue_number}} |
+      | Issue URL | {{issue_url}} |
+      | Branch | {{branch_name}} |
+      | PR | |
+      | PR URL | |
+
+      ※ 중요: Issue는 이미 존재하므로 새로 생성하지 않음
+    </action>
+
+    <action>Dev Notes 섹션 채우기:
+      - 이슈 본문에서 추출한 기술 정보
+      - 관련 파일 경로 (언급된 경우)
+      - 재현 단계 (버그인 경우)
+    </action>
+
+    <action>스토리 파일 저장: {{story_file_path}}</action>
+
+    <output>스토리 파일 생성됨: {{story_file_path}}</output>
+  </step>
+
+  <!-- ============================================== -->
+  <!-- STEP 4b: 기술 스펙 검증 -->
+  <!-- ============================================== -->
+  <step n="4b" goal="Import된 스토리의 기술 스펙 검증 (MANDATORY)">
+    <critical>🔍 TECHNICAL VERIFICATION — Import된 이슈의 기술 스펙도 반드시 검증해야 함</critical>
+    <critical>GitHub 이슈 작성자가 기술한 CLI 명령어, API, 파일 경로가 정확하다고 가정하지 말 것</critical>
+
+    <action>스토리 Dev Notes에서 외부 기술 스펙 목록 추출:
+      - CLI 명령어 및 옵션
+      - 외부 패키지 API 시그니처
+      - 파일 경로 및 디렉토리 구조
+      - 프로젝트 내부 코드 참조 (함수, 타입, 상수)
+    </action>
+
+    <action>각 기술 스펙 검증:
+      1. CLI 명령어 → `--help` 실행으로 존재 여부 확인
+      2. 외부 API → 실제 타입 정의/문서에서 시그니처 확인
+      3. 파일 경로 → ls/read로 존재 여부 확인
+      4. 내부 코드 → grep/read로 존재 및 시그니처 확인
+    </action>
+
+    <action>검증 결과 처리:
+      - 검증 성공 → [verified] 태그 부착
+      - 검증 실패 → 스토리 스펙을 실제에 맞게 수정, Dev Notes에 수정 사유 기록
+      - 검증 불가 → [unverified] 태그 부착, Dev Agent 검증 태스크 추가
+    </action>
+
+    <output>**🔍 기술 검증 완료:**
+      - 검증됨: {{verified_count}}
+      - 수정됨: {{corrected_count}}
+      - 미검증: {{unverified_count}} (Dev Agent가 구현 전 검증 필요)
+    </output>
+  </step>
+
+  <!-- ============================================== -->
+  <!-- STEP 5: Sprint Status 업데이트 -->
+  <!-- ============================================== -->
+  <step n="5" goal="Sprint Status 업데이트">
+    <action>sprint-status.yaml 파일 확인:
+      {implementation_artifacts}/sprint-status.yaml
+    </action>
+
+    <check if="sprint_status 파일 존재">
+      <action>sprint-status.yaml 로드</action>
+
+      <action>에픽 상태 확인 및 업데이트:
+        development_status:
+        epic-{{epic_num}}:
+          - 키가 없으면 추가 (status: backlog)
+          - 이미 있으면 유지
+      </action>
+
+      <action>스토리 항목 추가:
+        {{story_key}}: ready-for-dev
+      </action>
+
+      <action>sprint-status.yaml 저장 (기존 구조 유지)</action>
+
+      <output>Sprint Status 업데이트됨:
+        - 에픽: epic-{{epic_num}}
+        - 스토리: {{story_key}} (ready-for-dev)
+      </output>
+    </check>
+
+    <check if="sprint_status 파일 없음">
+      <output>sprint-status.yaml이 없습니다.
+        스토리 파일은 생성되었지만, Sprint Status는 수동으로 관리하거나
+        [SP] Sprint Planning을 먼저 실행하세요.
+      </output>
+    </check>
+  </step>
+
+  <!-- ============================================== -->
+  <!-- STEP 6: 원본 이슈에 코멘트 추가 -->
+  <!-- ============================================== -->
+  <step n="6" goal="원본 이슈에 코멘트 추가">
+    <action>코멘트 본문 생성:
+      ## Linked to BMAD Story
+
+      This issue has been imported to BMAD workflow:
+
+      - **Story ID:** {{epic_num}}.{{story_num}}
+      - **Story Title:** {{story_title}}
+      - **Story File:** `{{story_file_path}}`
+      - **Story Type:** {{story_type}}
+      - **Branch:** `{{branch_name}}`
+
+      ---
+      *Imported via BMAD Import Issue workflow*
+    </action>
+
+    <action>코멘트 추가:
+      gh issue comment {{issue_number}} --body "{{comment_body}}"
+    </action>
+
+    <check if="코멘트 추가 성공">
+      <output>이슈 #{{issue_number}}에 링크 코멘트 추가됨</output>
+    </check>
+
+    <check if="코멘트 추가 실패">
+      <output>코멘트 추가 실패 (권한 부족 또는 네트워크 오류).
+        수동으로 이슈에 스토리 링크를 추가해주세요:
+        gh issue comment {{issue_number}} --body "Linked to Story {{epic_num}}.{{story_num}}"
+      </output>
+    </check>
+  </step>
+
+  <!-- ============================================== -->
+  <!-- STEP 7: 완료 및 결과 요약 -->
+  <!-- ============================================== -->
+  <step n="7" goal="완료 및 결과 요약">
+    <output>**Import Issue 완료!**
+
+      **처리된 이슈:**
+      {{for each processed_issue}}
+      - Issue #{{number}} → Story {{epic_num}}.{{story_num}}: {{title}}
+        - 파일: {{story_file_path}}
+        - 타입: {{story_type}}
+        - 브랜치: {{branch_name}}
+      {{end for}}
+
+      {{if skipped_issues}}
+      **건너뛴 이슈:**
+      {{for each skipped_issue}}
+      - Issue #{{number}}: {{skip_reason}}
+      {{end for}}
+      {{end if}}
+
+      **다음 단계:**
+      1. 생성된 스토리 파일 검토 및 보완
+         - Tasks/Subtasks 섹션 작성
+         - Dev Notes 보완
+      2. 개발 시작:
+         - `dev-story` 워크플로우 실행
+         - 또는 직접 브랜치 생성: `git checkout -b {{branch_name}}`
+      3. 작업 완료 후 PR 생성:
+         - `Closes #{{issue_number}}` 포함하여 이슈 자동 닫기
+    </output>
+  </step>
+
+</workflow>

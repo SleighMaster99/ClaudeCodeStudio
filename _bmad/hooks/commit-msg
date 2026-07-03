@@ -1,0 +1,70 @@
+#!/bin/bash
+# BMad6GitHub - Commit Message Hook
+# Conventional Commits 형식 검증
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# 허용되는 타입
+TYPES="feat|fix|refactor|docs|test|chore|style|perf|ci|build|revert"
+
+# 패턴: type(scope): message 또는 type: message
+# scope는 선택사항
+PATTERN="^($TYPES)(\([a-zA-Z0-9._-]+\))?: .+"
+
+# Merge 커밋은 패스
+if echo "$COMMIT_MSG" | grep -qE "^Merge "; then
+    exit 0
+fi
+
+# Revert 커밋은 패스
+if echo "$COMMIT_MSG" | grep -qE "^Revert "; then
+    exit 0
+fi
+
+# 첫 번째 줄만 검사
+FIRST_LINE=$(echo "$COMMIT_MSG" | head -n 1)
+
+if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
+    echo ""
+    echo "=========================================="
+    echo "  ERROR: 커밋 메시지 형식이 올바르지 않습니다!"
+    echo "=========================================="
+    echo ""
+    echo "Conventional Commits 형식을 사용해주세요:"
+    echo ""
+    echo "  <type>(<scope>): <description> (#issue)"
+    echo ""
+    echo "허용되는 타입:"
+    echo "  feat     - 새 기능"
+    echo "  fix      - 버그 수정"
+    echo "  refactor - 코드 개선"
+    echo "  docs     - 문서"
+    echo "  test     - 테스트"
+    echo "  chore    - 설정/빌드"
+    echo "  style    - 코드 스타일"
+    echo "  perf     - 성능 개선"
+    echo "  ci       - CI/CD"
+    echo "  build    - 빌드 시스템"
+    echo "  revert   - 되돌리기"
+    echo ""
+    echo "예시:"
+    echo "  feat(story-1.2): 로그인 API 구현 (#42)"
+    echo "  fix: null 체크 추가"
+    echo "  docs: README 업데이트"
+    echo ""
+    echo "현재 메시지: $FIRST_LINE"
+    echo ""
+    exit 1
+fi
+
+# 한글 권장 (description 부분) - 차단하지 않고 경고만 표시
+DESC=$(echo "$FIRST_LINE" | sed 's/^[a-z]*([^)]*): //' | sed 's/^[a-z]*: //')
+if ! echo "$DESC" | grep -P '[\xEA-\xED][\x80-\xBF][\x80-\xBF]' > /dev/null 2>&1; then
+    echo ""
+    echo "NOTE: 커밋 메시지 제목을 한글로 작성하는 것을 권장합니다."
+    echo "  예: feat(cli): Claude Code 보안 훅 추가"
+    echo ""
+fi
+
+exit 0

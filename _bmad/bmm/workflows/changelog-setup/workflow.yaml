@@ -1,0 +1,13 @@
+name: changelog-setup
+description: "프로젝트에 CHANGELOG.md 자동 생성 기능 설정 (git-cliff 기반)"
+author: "BMAD"
+
+config_source: "{project-root}/_bmad/bmm/config.yaml"
+installed_path: "{project-root}/_bmad/bmm/workflows/changelog-setup"
+instructions: "{installed_path}/instructions.xml"
+template: false
+standalone: true
+
+variables:
+  changelog_templates: "{project-root}/_bmad/bmm/data/changelog"
+  target_root: "{project-root}"

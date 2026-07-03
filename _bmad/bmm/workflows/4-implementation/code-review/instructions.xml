@@ -1,0 +1,352 @@
+<workflow>
+  <critical>The workflow execution engine is governed by: {project-root}/_bmad/core/tasks/workflow.xml</critical>
+  <critical>You MUST have already loaded and processed: {installed_path}/workflow.yaml</critical>
+  <critical>Communicate all responses in {communication_language} and language MUST be tailored to {user_skill_level}</critical>
+  <critical>Generate all documents in {document_output_language}</critical>
+
+  <critical>You are a rigorous senior code reviewer. Find what is genuinely wrong or missing — no noise, no filler.</critical>
+  <critical>Your purpose: Validate story file claims against actual implementation</critical>
+  <critical>Challenge every claim: Are tasks marked [x] actually done? Are ACs really implemented?</critical>
+  <critical>Review thoroughly across code quality, tests, security, and performance - report only genuine issues, never invent or pad issues to reach a count - a clean review is a valid outcome</critical>
+  <critical>Read EVERY file in the File List - verify implementation against story requirements</critical>
+  <critical>Tasks marked complete but not done = CRITICAL finding</critical>
+  <critical>Acceptance Criteria not implemented = HIGH severity finding</critical>
+  <critical>Do not review files that are not part of the application's source code. Always exclude the _bmad/ and _bmad-output/ folders from the review. Always exclude IDE and CLI configuration folders like .cursor/ and .windsurf/ and .claude/</critical>
+
+  <critical>⚠️ SELF-REVIEW BIAS: If you are the same agent that implemented this story, you carry confirmation bias.
+    You will tend to assume your code is correct and skim edge cases you "already thought about."
+    Counter this deliberately: review as an independent reviewer seeing the code for the first time.</critical>
+
+  <step n="1" goal="Load story and discover changes">
+    <action>Use provided {{story_path}} or ask user which story file to review</action>
+    <action>Read COMPLETE story file</action>
+    <action>Set {{story_key}} = extracted key from filename (e.g., "1-2-user-authentication.md" → "1-2-user-authentication") or story
+      metadata</action>
+    <action>Parse sections: Story, Acceptance Criteria, Tasks/Subtasks, Dev Agent Record → File List, Change Log</action>
+
+    <!-- Discover actual changes via git -->
+    <action>Check if git repository detected in current directory</action>
+    <check if="git repository exists">
+      <action>Run `git status --porcelain` to find uncommitted changes</action>
+      <action>Run `git diff --name-only` to see modified files</action>
+      <action>Run `git diff --cached --name-only` to see staged files</action>
+      <action>Compile list of actually changed files from git output</action>
+    </check>
+
+    <!-- Cross-reference story File List vs git reality -->
+    <action>Compare story's Dev Agent Record → File List with actual git changes</action>
+    <action>Note discrepancies:
+      - Files in git but not in story File List
+      - Files in story File List but no git changes
+      - Missing documentation of what was actually changed
+    </action>
+
+    <invoke-protocol name="discover_inputs" />
+    <action>Load {project_context} for coding standards (if exists)</action>
+    <action>Load ALL coding rule documents matched by {coding_conventions} (every doc under docs/CodingRule/) for project coding rules (if any exist)</action>
+  </step>
+
+  <step n="2" goal="Build review attack plan">
+    <action>Extract ALL Acceptance Criteria from story</action>
+    <action>Extract ALL Tasks/Subtasks with completion status ([x] vs [ ])</action>
+    <action>From Dev Agent Record → File List, compile list of claimed changes</action>
+
+    <action>Create review plan:
+      1. **AC Validation**: Verify each AC is actually implemented
+      2. **Task Audit**: Verify each [x] task is really done
+      3. **Code Quality**: Security, performance, maintainability
+      4. **Test Quality**: Real tests vs placeholder tests
+    </action>
+
+    <!-- Initialize review loop counter -->
+    <action>Set {{review_round}} = 0</action>
+    <action>Set {{cumulative_fixed}} = 0</action>
+  </step>
+
+  <step n="3" goal="Execute adversarial review">
+    <critical>VALIDATE EVERY CLAIM - Check git reality vs story claims</critical>
+
+    <!-- Review loop tracking -->
+    <action>Set {{review_round}} = {{review_round}} + 1</action>
+    <check if="{{review_round}} gt 1">
+      <critical>This is a FULL re-review from scratch, not a verification pass.
+        Do not assume previous-round fixes are correct. Re-review as if seeing the code for the first time.
+        Execute ALL checks below (AC Validation, Task Audit, Code Quality) with the same rigor as Round 1.
+        Re-read EVERY file in the comprehensive review list, including files changed by previous-round fixes.</critical>
+      <output>🔄 **Re-review Round {{review_round}}** — FULL adversarial re-review (not just fix verification)...</output>
+      <action>Re-read ALL files in the comprehensive review list (not just files modified in the previous round)</action>
+      <action>Re-run git status/diff to capture latest changes</action>
+      <action>Re-extract ALL Acceptance Criteria and Tasks from the story file (do NOT rely on memory from previous rounds)</action>
+    </check>
+
+    <!-- Git vs Story Discrepancies -->
+    <action>Review git vs story File List discrepancies:
+      1. **Files changed but not in story File List** → MEDIUM finding (incomplete documentation)
+      2. **Story lists files but no git changes** → HIGH finding (false claims)
+      3. **Uncommitted changes not documented** → MEDIUM finding (transparency issue)
+    </action>
+    <action>Set {{git_discrepancy_count}} = total number of git-vs-story discrepancies found this round.</action>
+
+    <!-- Use combined file list: story File List + git discovered files -->
+    <action>Create comprehensive review file list from story File List and git changes</action>
+
+    <!-- AC Validation -->
+    <action>For EACH Acceptance Criterion:
+      1. Read the AC requirement
+      2. Search implementation files for evidence
+      3. Determine: IMPLEMENTED, PARTIAL, or MISSING
+      4. If MISSING/PARTIAL → HIGH SEVERITY finding
+    </action>
+
+    <!-- Task Completion Audit -->
+    <action>For EACH task marked [x]:
+      1. Read the task description
+      2. Search files for evidence it was actually done
+      3. **CRITICAL**: If marked [x] but NOT DONE → CRITICAL finding
+      4. Record specific proof (file:line)
+    </action>
+
+    <!-- Code Quality Deep Dive -->
+    <action>For EACH file in comprehensive review list:
+      1. **Security**: Look for injection risks, missing validation, auth issues
+      2. **Performance**: N+1 queries, inefficient loops, missing caching
+      3. **Error Handling**: Missing try/catch, poor error messages
+      4. **Code Quality**: Complex functions, magic numbers, poor naming
+      5. **Test Quality**: Are tests real assertions or placeholders?
+    </action>
+
+    <!-- Story Spec Accuracy Verification -->
+    <critical>🔍 SPEC REALITY CHECK — Verify that story technical specs match actual implementation targets</critical>
+    <action>For EACH external tool, CLI command, or API referenced in Dev Notes:
+      1. Verify CLI commands exist: run `--help` or check that the command is valid
+      2. Verify API signatures match actual package type definitions (check node_modules or docs)
+      3. Verify file paths referenced in story actually exist in the project
+      4. Check that [unverified] items were verified during implementation (look for verification notes in Dev Agent Record)
+      5. If story spec does NOT match reality → HIGH SEVERITY finding: "Story spec inaccuracy: [detail]"
+    </action>
+
+    <!-- Final coverage check before reporting — guidance, NOT a quota -->
+    <action>Before proceeding to Step 4, do a final pass to confirm these review angles were genuinely covered:
+        - Edge cases and null handling (what happens with empty input? null? undefined?)
+        - Architecture violations (does it follow the documented patterns?)
+        - Missing error handling (what if the DB call fails? API timeout? invalid data?)
+        - Security issues (SQL injection? XSS? missing auth checks? input validation?)
+        - Performance (N+1 queries? unnecessary re-renders? missing memoization?)
+        - Test quality (are assertions specific? do tests cover error paths? any mocked-away logic?)
+        - Integration issues (does it work with the rest of the system? race conditions?)
+        - Dependency problems (version conflicts? unused imports? circular dependencies?)
+    </action>
+    <action>Report every genuine issue found. Do NOT fabricate or pad issues to reach any count — a low issue count (including zero) is a valid outcome when the code is genuinely clean.</action>
+
+    <!-- Mandatory review evidence output — required EVERY round before proceeding to Step 4 -->
+    <critical>You MUST output the following structured evidence checklist BEFORE proceeding to Step 4.
+      If you cannot fill in specific evidence for each section, you have NOT completed the review.
+      Do NOT proceed to Step 4 until every section has concrete evidence.</critical>
+    <output>### 📋 Review Evidence (Round {{review_round}})
+
+      **Files Actually Read This Round:** [list every file path you read]
+
+      **AC Verification:**
+      {{for each AC}}
+      - AC#{{n}}: {{IMPLEMENTED|PARTIAL|MISSING}} — Evidence: {{file:line or specific code reference}}
+      {{/for}}
+
+      **Task Audit:**
+      {{for each [x] task}}
+      - Task {{n}}: {{VERIFIED|NOT DONE}} — Evidence: {{file:line or specific code reference}}
+      {{/for}}
+
+      **Security/Performance Spot-Check:**
+      - Checked: {{list specific checks performed with file references}}
+
+      **Issues Found This Round:** {{count}} ({{high}} HIGH, {{medium}} MEDIUM, {{low}} LOW)
+    </output>
+
+    <action>Compile every finding discovered this round into a raw findings list — each finding with: title (one-line), detail, location (file:line if available), severity (HIGH/MEDIUM/LOW). This list is the input to Step 4 triage.</action>
+  </step>
+
+  <step n="4" goal="Triage findings into actionable categories">
+    <critical>Classify every finding into exactly one bucket. When uncertain between categories, prefer the more conservative one.</critical>
+
+    <!-- 4a. Merge duplicates -->
+    <action>Review the raw findings list from Step 3. If two or more findings describe the same underlying issue, merge them into one — keep the most specific (prefer findings with a file:line location) and fold in unique detail from the others.</action>
+
+    <!-- 4b. Classify into exactly one bucket -->
+    <action>Classify EACH finding into exactly one of these buckets:
+      - **decision_needed** — An ambiguous choice that requires human input; the code cannot be correctly fixed without knowing the user's intent.
+      - **patch** — A code issue fixable without human input; the correct fix is unambiguous.
+      - **defer** — A real issue that pre-exists this change (not caused by the current story); not actionable now.
+      - **dismiss** — Noise, false positive, or already handled elsewhere.
+    </action>
+
+    <!-- 4c. Drop dismissed findings -->
+    <action>Drop all `dismiss` findings from further processing — they are noise and are neither recorded in the story file nor fixed.</action>
+
+    <!-- 4d. Tally -->
+    <action>Set bucket counts: {{decision_count}}, {{patch_count}}, {{defer_count}}, {{dismiss_count}}.</action>
+    <action>Set {{high_count}} / {{medium_count}} / {{low_count}} = severity tallies across decision_needed + patch findings (defer excluded; dismiss already dropped). Used for the Senior Developer Review (AI) section's severity breakdown — NOT for status determination.</action>
+
+    <output>### 🧪 Triage Result (Round {{review_round}})
+
+      - decision_needed: {{decision_count}}
+      - patch: {{patch_count}}
+      - defer: {{defer_count}}
+      - dismissed (dropped as noise): {{dismiss_count}}
+    </output>
+  </step>
+
+  <step n="5" goal="Present findings, act on user choice, sync status">
+    <critical>🛑 HALT at every checkpoint and wait for the user. NEVER apply code fixes without an explicit user choice.</critical>
+    <critical>Resolve `decision_needed` findings BEFORE handling `patch` findings.</critical>
+
+    <!-- 5a. Clean review shortcut -->
+    <check if="{{decision_count}} + {{patch_count}} + {{defer_count}} == 0">
+      <output>✅ **Clean review (Round {{review_round}})** — no actionable findings ({{dismiss_count}} dismissed as noise).</output>
+      <goto anchor="status_sync" />
+    </check>
+
+    <!-- 5b. Record findings in the story file -->
+    <action>Add or update a "Review Follow-ups (AI) — Round {{review_round}}" subsection under the story file's Tasks/Subtasks. Record findings in this order:
+      1. decision_needed: `- [ ] [AI-Review][Decision][{{severity}}] {{title}} — {{detail}} [{{file}}:{{line}}]`
+      2. patch: `- [ ] [AI-Review][Patch][{{severity}}] {{title}} [{{file}}:{{line}}]`
+      3. defer: `- [x] [AI-Review][Defer] {{title}} [{{file}}:{{line}}] — deferred, pre-existing`
+    </action>
+    <action>For each `defer` finding, also append a bullet to {deferred_work_file} under a heading `## Deferred from: code review of {{story_key}} ({{date}})`. Create the file if it does not exist.</action>
+
+    <!-- 5c. Present summary -->
+    <output>**🔎 Code Review Findings (Round {{review_round}}), {user_name}!**
+
+      **Story:** {{story_file}}
+      **Git vs Story Discrepancies:** {{git_discrepancy_count}}
+      **Triage:** {{decision_count}} decision-needed, {{patch_count}} patch, {{defer_count}} defer, {{dismiss_count}} dismissed
+      Findings recorded under "Review Follow-ups (AI)" in the story file.
+    </output>
+
+    <!-- 5d. Resolve decision_needed findings -->
+    <check if="{{decision_count}} gt 0">
+      <action>Present EACH `decision_needed` finding with its detail and the realistic options. The correct fix is ambiguous without user input.</action>
+      <ask>For each decision-needed finding, decide how to resolve it (apply a specific fix → patch, defer, or dismiss).</ask>
+      <critical>🛑 HALT — wait for the user's decision on every decision-needed finding before continuing.</critical>
+      <action>Re-classify each resolved finding: update {{patch_count}} / {{defer_count}} / {{dismiss_count}}, rewrite the corresponding story file line with the new category tag, and — if re-classified to `defer` — also append it to {deferred_work_file} as in 5b.</action>
+    </check>
+
+    <!-- 5e. Handle patch findings -->
+    <check if="{{patch_count}} gt 0">
+      <output>**How would you like to handle the {{patch_count}} `patch` finding(s)?**
+        1. **Fix automatically** — apply all patch fixes now
+        2. **Leave as action items** — keep them in the story file, change no code
+        3. **Walk through each** — show detail before deciding per finding
+        {{#if patch_count gt 3}}0. **Batch-apply all** — apply every non-controversial patch, skip any needing judgment{{/if}}
+    </output>
+      <ask>Choose how to handle the patch findings (reply with the option number):</ask>
+      <critical>🛑 HALT — wait for the user's numbered choice. Do NOT change any code before the user chooses.</critical>
+
+      <check if="user chooses '1' or '0'">
+        <action>Apply each patch fix. For option 0, skip any patch that needs judgment and report it as skipped.</action>
+        <action>Add or update tests as needed. Update the story File List if files changed.</action>
+        <action>Mark applied items [x] in the "Review Follow-ups (AI)" section. Update Dev Agent Record with fixes applied.</action>
+        <action>Set {{fixed_count}} = number of patches applied. Set {{cumulative_fixed}} = {{cumulative_fixed}} + {{fixed_count}}.</action>
+        <output>🔧 {{fixed_count}} patch(es) applied.</output>
+      </check>
+      <check if="user chooses '2'">
+        <action>Leave patch findings unchecked in the story file. Make no code changes.</action>
+      </check>
+      <check if="user chooses '3'">
+        <action>Present each patch finding with full detail, code context, and the suggested fix.</action>
+        <action>After the walkthrough, re-offer options 1 and 2.</action>
+        <critical>🛑 HALT — wait for the user's numbered choice after the walkthrough.</critical>
+        <action>Apply the post-walkthrough choice using the same actions as option 1 (Fix automatically) or option 2 (Leave as action items).</action>
+      </check>
+    </check>
+
+    <anchor id="status_sync" />
+
+    <!-- 5f. Determine story status (based on triage-bucket resolution, not severity tallies) -->
+    <check if="all decision_needed findings were resolved in 5d AND all patch findings were fixed AND all Acceptance Criteria are implemented">
+      <action>Set {{new_status}} = "done"</action>
+      <action>Update story Status field to "done"</action>
+    </check>
+    <check if="any decision_needed finding is unresolved OR any patch finding was left as an action item OR any Acceptance Criterion is not implemented">
+      <action>Set {{new_status}} = "in-progress"</action>
+      <action>Update story Status field to "in-progress"</action>
+    </check>
+    <action>Save story file</action>
+
+    <!-- Determine sprint tracking status -->
+    <check if="{sprint_status} file exists">
+      <action>Set {{current_sprint_status}} = "enabled"</action>
+    </check>
+    <check if="{sprint_status} file does NOT exist">
+      <action>Set {{current_sprint_status}} = "no-sprint-tracking"</action>
+    </check>
+
+    <!-- Sync sprint-status.yaml when story status changes (only if sprint tracking enabled) -->
+    <check if="{{current_sprint_status}} != 'no-sprint-tracking'">
+      <action>Load the FULL file: {sprint_status}</action>
+      <action>Find development_status key matching {{story_key}}</action>
+
+      <check if="{{new_status}} == 'done'">
+        <action>Update development_status[{{story_key}}] = "done"</action>
+        <action>Save file, preserving ALL comments and structure</action>
+        <output>✅ Sprint status synced: {{story_key}} → done</output>
+      </check>
+
+      <check if="{{new_status}} == 'in-progress'">
+        <action>Update development_status[{{story_key}}] = "in-progress"</action>
+        <action>Save file, preserving ALL comments and structure</action>
+        <output>🔄 Sprint status synced: {{story_key}} → in-progress</output>
+      </check>
+
+      <check if="story key not found in sprint status">
+        <output>⚠️ Story file updated, but sprint-status sync failed: {{story_key}} not found in sprint-status.yaml</output>
+      </check>
+    </check>
+
+    <check if="{{current_sprint_status}} == 'no-sprint-tracking'">
+      <output>ℹ️ Story status updated (no sprint tracking configured)</output>
+    </check>
+
+    <!-- 5f-bis. Senior Developer Review (AI) 섹션 생성 — dev-story review continuation 호환 -->
+    <action>Determine {{review_outcome}}:
+      - if {{new_status}} == "done" → "Approve"
+      - else if any `decision_needed` finding remains unresolved → "Blocked"
+      - else (patch findings were left as action items) → "Changes Requested"
+    </action>
+    <action>Add or update a "Senior Developer Review (AI)" section in the story file (placed above Change Log, below Dev Agent Record):
+
+      **Reviewer:** {user_name}
+      **Date:** {{date}}
+      **Review Outcome:** {{review_outcome}}
+      **Severity Breakdown:** {{high_count}} High, {{medium_count}} Medium, {{low_count}} Low (counted across decision_needed + patch findings; defer/dismiss excluded)
+
+      Under it, add or update an "**Action Items**" subsection mirroring the Round {{review_round}} findings:
+        - decision_needed: `- [ ] [Decision][{{severity}}] {{title}} — {{detail}} [{{file}}:{{line}}]`
+        - patch: `- [ ] [Patch][{{severity}}] {{title}} [{{file}}:{{line}}]`
+        - defer: `- [x] [Defer] {{title}} [{{file}}:{{line}}] — deferred, pre-existing`
+
+      Rationale: enables dev-story's review_continuation mode on subsequent runs and lets dev-story Step 8 cross-mark resolved items via description match.
+    </action>
+    <action>Save story file with the updated Senior Developer Review (AI) section.</action>
+
+    <!-- 5g. Completion summary and next steps -->
+    <output>**✅ Review Complete!**
+
+      **Story Status:** {{new_status}}
+      **Review Rounds:** {{review_round}}
+      **Patches Applied (cumulative):** {{cumulative_fixed}}
+      **Deferred:** {{defer_count}} | **Dismissed:** {{dismiss_count}}
+    </output>
+
+    <output>**What would you like to do next?**
+      1. **Start the next story** — run `dev-story` for the next ready-for-dev story
+      2. **Re-run code review** — re-review (e.g. after addressing action items)
+      3. **Done** — end the workflow
+    </output>
+    <ask>Choose [1], [2], or [3]:</ask>
+    <critical>🛑 HALT — wait for the user's choice.</critical>
+    <check if="user chooses '2'">
+      <goto step="3">Re-run the adversarial review from Step 3</goto>
+    </check>
+  </step>
+
+</workflow>
