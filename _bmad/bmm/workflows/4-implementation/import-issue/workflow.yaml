@@ -1,0 +1,44 @@
+name: import-issue
+description: "GitHub 이슈를 가져와서 BMAD 스토리 문서로 변환"
+author: "BMAD"
+
+# Critical variables from config
+config_source: "{project-root}/_bmad/bmm/config.yaml"
+user_name: "{config_source}:user_name"
+communication_language: "{config_source}:communication_language"
+date: system-generated
+planning_artifacts: "{config_source}:planning_artifacts"
+epics_artifacts: "{config_source}:epics_artifacts"
+stories_artifacts: "{config_source}:stories_artifacts"
+implementation_artifacts: "{config_source}:implementation_artifacts"
+output_folder: "{implementation_artifacts}"
+story_dir: "{stories_artifacts}"
+
+# Workflow components
+installed_path: "{project-root}/_bmad/bmm/workflows/4-implementation/import-issue"
+template: "{project-root}/_bmad/bmm/workflows/4-implementation/create-story/template.md"
+instructions: "{installed_path}/instructions.xml"
+validation: "{installed_path}/checklist.md"
+
+# Variables and inputs
+variables:
+  sprint_status: "{implementation_artifacts}/sprint-status.yaml"
+  epics_file: "{planning_artifacts}/epics.md"
+  issue_numbers: "" # User input - comma-separated issue numbers
+
+default_output_file: "{story_dir}/epic-{{epic_num}}/{{epic_num}}.{{story_num}}-{{story_title}}.md"
+
+# Smart input file references
+input_file_patterns:
+  epics:
+    description: "Epic files for matching"
+    whole: "{epics_artifacts}/*epic*.md"
+    sharded_root: "{planning_artifacts}/*epic*.md"
+    sharded: "{epics_artifacts}/*epic*/*.md"
+    load_strategy: "FULL_LOAD"
+  sprint_status:
+    description: "Sprint status for updating"
+    whole: "{implementation_artifacts}/sprint-status.yaml"
+    load_strategy: "FULL_LOAD"
+
+standalone: true

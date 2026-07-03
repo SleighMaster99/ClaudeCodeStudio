@@ -1,0 +1,73 @@
+name: create-story
+description: "Create the next user story from epics+stories with enhanced context analysis and direct ready-for-dev marking"
+author: "BMad"
+
+# Critical variables from config
+config_source: "{project-root}/_bmad/bmm/config.yaml"
+user_name: "{config_source}:user_name"
+communication_language: "{config_source}:communication_language"
+date: system-generated
+planning_artifacts: "{config_source}:planning_artifacts"
+epics_artifacts: "{config_source}:epics_artifacts"
+stories_artifacts: "{config_source}:stories_artifacts"
+prd_artifacts: "{config_source}:prd_artifacts"
+architecture_artifacts: "{config_source}:architecture_artifacts"
+implementation_artifacts: "{config_source}:implementation_artifacts"
+output_folder: "{implementation_artifacts}"
+story_dir: "{stories_artifacts}"
+retrospectives_folder: "{implementation_artifacts}/retrospectives"
+
+# Workflow components
+installed_path: "{project-root}/_bmad/bmm/workflows/4-implementation/create-story"
+template: "{installed_path}/template.md"
+instructions: "{installed_path}/instructions.xml"
+validation: "{installed_path}/checklist.md"
+
+# Variables and inputs
+variables:
+  sprint_status: "{implementation_artifacts}/sprint-status.yaml" # Primary source for story tracking
+  epics_file: "{planning_artifacts}/epics.md" # Epics index (epic list + file links; story details live in {epics_artifacts}/epic-N.md)
+  prd_file: "{planning_artifacts}/prd.md" # Fallback for requirements (if not in epics file)
+  architecture_file: "{planning_artifacts}/architecture.md" # Fallback for constraints (if not in epics file)
+  ux_file: "{planning_artifacts}/*ux*.md" # Fallback for UX requirements (if not in epics file)
+  story_title: "" # Will be elicited if not derivable
+
+# Project context
+project_context: "**/project-context.md"
+coding_conventions: "docs/CodingRule/**/*.md"
+
+default_output_file: "{story_dir}/epic-{{epic_num}}/{{epic_num}}.{{story_num}}-{{story_title}}.md"
+
+# Smart input file references - Simplified for enhanced approach
+# The per-epic files should contain everything needed with source hints
+input_file_patterns:
+  prd:
+    description: "PRD (fallback - epics file should have most content)"
+    whole: "{planning_artifacts}/*prd*.md"
+    sharded: "{prd_artifacts}/*.md"
+    sharded_index: "{prd_artifacts}/index.md"
+    load_strategy: "SELECTIVE_LOAD" # Only load if needed
+  architecture:
+    description: "Architecture (fallback - epics file should have relevant sections)"
+    whole: "{planning_artifacts}/*architecture*.md"
+    sharded: "{architecture_artifacts}/*.md"
+    sharded_index: "{architecture_artifacts}/index.md"
+    load_strategy: "SELECTIVE_LOAD" # Only load if needed
+  ux:
+    description: "UX design (fallback - epics file should have relevant sections)"
+    whole: "{planning_artifacts}/*ux*.md"
+    sharded: "{planning_artifacts}/*ux*/*.md"
+    load_strategy: "SELECTIVE_LOAD" # Only load if needed
+  epics:
+    description: "Per-epic files with stories, BDD and source hints (standard structure: one file per epic)"
+    sharded_single: "{epics_artifacts}/epic-{{epic_num}}.md" # Standard structure - load only the needed epic file
+    whole: "{epics_artifacts}/*epic*.md"
+    sharded_root: "{planning_artifacts}/*epic*.md"
+    sharded: "{epics_artifacts}/*epic*/*.md"
+    load_strategy: "SELECTIVE_LOAD" # Only load needed epic
+  retrospective:
+    description: "Previous epic retrospectives for lessons learned and action items"
+    pattern: "{retrospectives_folder}/epic-*-retro-*.md"
+    load_strategy: "SELECTIVE_LOAD" # Load most recent retrospective(s)
+
+standalone: true

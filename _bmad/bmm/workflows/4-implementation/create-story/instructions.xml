@@ -1,0 +1,617 @@
+<workflow>
+  <critical>The workflow execution engine is governed by: {project-root}/_bmad/core/tasks/workflow.xml</critical>
+  <critical>You MUST have already loaded and processed: {installed_path}/workflow.yaml</critical>
+  <critical>Communicate all responses in {communication_language} and generate all documents in {document_output_language}</critical>
+
+  <critical>🔥 CRITICAL MISSION: You are creating the ULTIMATE story context engine that prevents LLM developer mistakes, omissions or
+    disasters! 🔥</critical>
+  <critical>Your purpose is NOT to copy from epics - it's to create a comprehensive, optimized story file that gives the DEV agent
+    EVERYTHING needed for flawless implementation</critical>
+  <critical>COMMON LLM MISTAKES TO PREVENT: reinventing wheels, wrong libraries, wrong file locations, breaking regressions, ignoring UX,
+    vague implementations, lying about completion, not learning from past work</critical>
+  <critical>🚨 EXHAUSTIVE ANALYSIS REQUIRED: You must thoroughly analyze ALL artifacts to extract critical context - do NOT be lazy or skim!
+    This is the most important function in the entire development process!</critical>
+  <critical>🔬 UTILIZE SUBPROCESSES AND SUBAGENTS: Use research subagents, subprocesses or parallel processing if available to thoroughly
+    analyze different artifacts simultaneously and thoroughly</critical>
+  <critical>❓ SAVE QUESTIONS: If you think of questions or clarifications during analysis, save them for the end after the complete story is
+    written</critical>
+  <critical>🎯 ZERO USER INTERVENTION: Process should be fully automated except for initial epic/story selection or missing documents</critical>
+
+  <step n="1" goal="Determine target story">
+    <check if="{{story_path}} is provided by user or user provided the epic and story number such as 2-4 or 1.6 or epic 1 story 5">
+      <action>Parse user-provided story path: extract epic_num, story_num, story_title from format like "1-2-user-auth"</action>
+      <action>Set {{epic_num}}, {{story_num}}, {{story_key}} from user input</action>
+      <action>GOTO step 2a</action>
+    </check>
+
+    <action>Check if {{sprint_status}} file exists for auto discover</action>
+    <check if="sprint status file does NOT exist">
+      <output>🚫 No sprint status file found and no story specified</output>
+      <output>
+        **Required Options:**
+        1. Run `sprint-planning` to initialize sprint tracking (recommended)
+        2. Provide specific epic-story number to create (e.g., "1-2-user-auth")
+        3. Provide path to story documents if sprint status doesn't exist yet
+      </output>
+      <ask>Choose option [1], provide epic-story number, path to story docs, or [q] to quit:</ask>
+
+      <check if="user chooses 'q'">
+        <action>HALT - No work needed</action>
+      </check>
+
+      <check if="user chooses '1'">
+        <output>Run sprint-planning workflow first to create sprint-status.yaml</output>
+        <action>HALT - User needs to run sprint-planning</action>
+      </check>
+
+      <check if="user provides epic-story number">
+        <action>Parse user input: extract epic_num, story_num, story_title</action>
+        <action>Set {{epic_num}}, {{story_num}}, {{story_key}} from user input</action>
+        <action>GOTO step 2a</action>
+      </check>
+
+      <check if="user provides story docs path">
+        <action>Use user-provided path for story documents</action>
+        <action>GOTO step 2a</action>
+      </check>
+    </check>
+
+    <!-- Auto-discover from sprint status only if no user input -->
+    <check if="no user input provided">
+      <critical>MUST read COMPLETE {sprint_status} file from start to end to preserve order</critical>
+      <action>Load the FULL file: {{sprint_status}}</action>
+      <action>Read ALL lines from beginning to end - do not skip any content</action>
+      <action>Parse the development_status section completely</action>
+
+      <action>Find the FIRST story (by reading in order from top to bottom) where:
+        - Key matches pattern: number-number-name (e.g., "1-2-user-auth")
+        - NOT an epic key (epic-X) or retrospective (epic-X-retrospective)
+        - Status value equals "backlog"
+      </action>
+
+      <check if="no backlog story found">
+        <output>📋 No backlog stories found in sprint-status.yaml
+
+          All stories are either already created, in progress, or done.
+
+          **Options:**
+          1. Run sprint-planning to refresh story tracking
+          2. Load PM agent and run correct-course to add more stories
+          3. Check if current sprint is complete and run retrospective
+        </output>
+        <action>HALT</action>
+      </check>
+
+      <action>Extract from found story key (e.g., "1-2-user-authentication"):
+        - epic_num: first number before dash (e.g., "1")
+        - story_num: second number after first dash (e.g., "2")
+        - story_title: remainder after second dash (e.g., "user-authentication")
+      </action>
+      <action>Set {{story_id}} = "{{epic_num}}.{{story_num}}"</action>
+      <action>Store story_key for later use (e.g., "1-2-user-authentication")</action>
+
+      <!-- Mark epic as in-progress if this is first story -->
+      <action>Check if this is the first story in epic {{epic_num}} by looking for {{epic_num}}-1-* pattern</action>
+      <check if="this is first story in epic {{epic_num}}">
+        <action>Load {{sprint_status}} and check epic-{{epic_num}} status</action>
+        <action>If epic status is "backlog" → update to "in-progress"</action>
+        <action>If epic status is "contexted" (legacy status) → update to "in-progress" (backward compatibility)</action>
+        <action>If epic status is "in-progress" → no change needed</action>
+        <check if="epic status is 'done'">
+          <output>🚫 ERROR: Cannot create story in completed epic</output>
+          <output>Epic {{epic_num}} is marked as 'done'. All stories are complete.</output>
+          <output>If you need to add more work, either:</output>
+          <output>1. Manually change epic status back to 'in-progress' in sprint-status.yaml</output>
+          <output>2. Create a new epic for additional work</output>
+          <action>HALT - Cannot proceed</action>
+        </check>
+        <check if="epic status is not one of: backlog, contexted, in-progress, done">
+          <output>🚫 ERROR: Invalid epic status '{{epic_status}}'</output>
+          <output>Epic {{epic_num}} has invalid status. Expected: backlog, in-progress, or done</output>
+          <output>Please fix sprint-status.yaml manually or run sprint-planning to regenerate</output>
+          <action>HALT - Cannot proceed</action>
+        </check>
+        <output>📊 Epic {{epic_num}} status updated to in-progress</output>
+      </check>
+
+      <action>GOTO step 2a</action>
+    </check>
+    <action>Load the FULL file: {{sprint_status}}</action>
+    <action>Read ALL lines from beginning to end - do not skip any content</action>
+    <action>Parse the development_status section completely</action>
+
+    <action>Find the FIRST story (by reading in order from top to bottom) where:
+      - Key matches pattern: number-number-name (e.g., "1-2-user-auth")
+      - NOT an epic key (epic-X) or retrospective (epic-X-retrospective)
+      - Status value equals "backlog"
+    </action>
+
+    <check if="no backlog story found">
+      <output>📋 No backlog stories found in sprint-status.yaml
+
+        All stories are either already created, in progress, or done.
+
+        **Options:**
+        1. Run sprint-planning to refresh story tracking
+        2. Load PM agent and run correct-course to add more stories
+        3. Check if current sprint is complete and run retrospective
+      </output>
+      <action>HALT</action>
+    </check>
+
+    <action>Extract from found story key (e.g., "1-2-user-authentication"):
+      - epic_num: first number before dash (e.g., "1")
+      - story_num: second number after first dash (e.g., "2")
+      - story_title: remainder after second dash (e.g., "user-authentication")
+    </action>
+    <action>Set {{story_id}} = "{{epic_num}}.{{story_num}}"</action>
+    <action>Store story_key for later use (e.g., "1-2-user-authentication")</action>
+
+    <!-- Mark epic as in-progress if this is first story -->
+    <action>Check if this is the first story in epic {{epic_num}} by looking for {{epic_num}}-1-* pattern</action>
+    <check if="this is first story in epic {{epic_num}}">
+      <action>Load {{sprint_status}} and check epic-{{epic_num}} status</action>
+      <action>If epic status is "backlog" → update to "in-progress"</action>
+      <action>If epic status is "contexted" (legacy status) → update to "in-progress" (backward compatibility)</action>
+      <action>If epic status is "in-progress" → no change needed</action>
+      <check if="epic status is 'done'">
+        <output>🚫 ERROR: Cannot create story in completed epic</output>
+        <output>Epic {{epic_num}} is marked as 'done'. All stories are complete.</output>
+        <output>If you need to add more work, either:</output>
+        <output>1. Manually change epic status back to 'in-progress' in sprint-status.yaml</output>
+        <output>2. Create a new epic for additional work</output>
+        <action>HALT - Cannot proceed</action>
+      </check>
+      <check if="epic status is not one of: backlog, contexted, in-progress, done">
+        <output>🚫 ERROR: Invalid epic status '{{epic_status}}'</output>
+        <output>Epic {{epic_num}} has invalid status. Expected: backlog, in-progress, or done</output>
+        <output>Please fix sprint-status.yaml manually or run sprint-planning to regenerate</output>
+        <action>HALT - Cannot proceed</action>
+      </check>
+      <output>📊 Epic {{epic_num}} status updated to in-progress</output>
+    </check>
+
+    <action>GOTO step 2a</action>
+  </step>
+
+  <step n="2" goal="Load and analyze core artifacts">
+    <critical>🔬 EXHAUSTIVE ARTIFACT ANALYSIS - This is where you prevent future developer fuckups!</critical>
+
+    <!-- Load all available content through discovery protocol -->
+    <invoke-protocol
+      name="discover_inputs" />
+    <note>Available content: {epics_content}, {prd_content}, {architecture_content}, {ux_content},
+    {project_context}, {coding_conventions}</note>
+
+    <!-- Analyze epics file for story foundation -->
+    <action>From {epics_content}, extract Epic {{epic_num}} complete context:</action> **EPIC ANALYSIS:** - Epic
+    objectives and business value - ALL stories in this epic for cross-story context - Our specific story's requirements, user story
+    statement, acceptance criteria - Technical requirements and constraints - Dependencies on other stories/epics - Source hints pointing to
+    original documents <!-- Extract specific story requirements -->
+    <action>Extract our story ({{epic_num}}-{{story_num}}) details:</action> **STORY FOUNDATION:** - User story statement
+    (As a, I want, so that) - Detailed acceptance criteria (already BDD formatted) - Technical requirements specific to this story -
+    Business context and value - Success criteria <!-- Previous story analysis for context continuity -->
+    <check if="story_num > 1">
+      <action>Load previous story file: {{story_dir}}/{{epic_num}}-{{previous_story_num}}-*.md</action> **PREVIOUS STORY INTELLIGENCE:** -
+    Dev notes and learnings from previous story - Review feedback and corrections needed - Files that were created/modified and their
+    patterns - Testing approaches that worked/didn't work - Problems encountered and solutions found - Code patterns established <action>Extract
+    all learnings that could impact current story implementation</action>
+    </check>
+
+    <!-- Retrospective intelligence for learning propagation -->
+    <action>Check if {retrospectives_folder} exists and contains retrospective documents</action>
+    <check if="retrospective documents found in {retrospectives_folder}">
+      <action>Scan {retrospectives_folder} for files matching pattern: epic-*-retro-*.md</action>
+      <action>Sort by epic number descending, load the most recent retrospective(s) relevant to current epic</action>
+      <action>If current epic_num > 1, prioritize loading epic-{{prev_epic_num}}-retro-*.md (immediately preceding epic)</action>
+
+      **RETROSPECTIVE INTELLIGENCE:**
+      <action>Extract from each loaded retrospective:
+        - **Action Items**: Specific agreed-upon changes and their ownership
+        - **Team Agreements**: Process or coding conventions the team committed to
+        - **Recurring Patterns**: Issues that appeared multiple times across stories
+        - **Code Review Findings**: H/M-level issues that were repeatedly flagged
+        - **Lessons Learned**: Key insights about what worked and what didn't
+        - **Anti-Patterns Identified**: Specific mistakes to avoid going forward
+      </action>
+      <action>Filter extracted items for relevance to current story's domain and technical area</action>
+      <action>Flag any unresolved action items that directly apply to this story's implementation</action>
+    </check>
+
+    <!-- Git intelligence for previous work patterns -->
+    <check
+      if="previous story exists AND git repository detected">
+      <action>Get last 5 commit titles to understand recent work patterns</action>
+      <action>Analyze 1-5 most recent commits for relevance to current story:
+        - Files created/modified
+        - Code patterns and conventions used
+        - Library dependencies added/changed
+        - Architecture decisions implemented
+        - Testing approaches used
+      </action>
+      <action>Extract actionable insights for current story implementation</action>
+    </check>
+  </step>
+
+  <step n="3" goal="Architecture analysis for developer guardrails">
+    <critical>🏗️ ARCHITECTURE INTELLIGENCE - Extract everything the developer MUST follow!</critical> **ARCHITECTURE DOCUMENT ANALYSIS:** <action>Systematically
+    analyze architecture content for story-relevant requirements:</action>
+
+    <!-- Load architecture - single file or sharded -->
+    <check if="architecture file is single file">
+      <action>Load complete {architecture_content}</action>
+    </check>
+    <check if="architecture is sharded to folder">
+      <action>Load architecture index and scan all architecture files</action>
+    </check> **CRITICAL ARCHITECTURE EXTRACTION:** <action>For
+    each architecture section, determine if relevant to this story:</action> - **Technical Stack:** Languages, frameworks, libraries with
+    versions - **Code Structure:** Folder organization, naming conventions, file patterns - **API Patterns:** Service structure, endpoint
+    patterns, data contracts - **Database Schemas:** Tables, relationships, constraints relevant to story - **Security Requirements:**
+    Authentication patterns, authorization rules - **Performance Requirements:** Caching strategies, optimization patterns - **Testing
+    Standards:** Testing frameworks, coverage expectations, test patterns - **Deployment Patterns:** Environment configurations, build
+    processes - **Integration Patterns:** External service integrations, data flows <action>Extract any story-specific requirements that the
+    developer MUST follow</action>
+    <action>Identify any architectural decisions that override previous patterns</action>
+  </step>
+
+  <step n="4" goal="Web research for latest technical specifics">
+    <critical>🌐 ENSURE LATEST TECH KNOWLEDGE - Prevent outdated implementations!</critical> **WEB INTELLIGENCE:** <action>Identify specific
+    technical areas that require latest version knowledge:</action>
+
+    <!-- Check for libraries/frameworks mentioned in architecture -->
+    <action>From architecture analysis, identify specific libraries, APIs, or
+    frameworks</action>
+    <action>For each critical technology, research latest stable version and key changes:
+      - Latest API documentation and breaking changes
+      - Security vulnerabilities or updates
+      - Performance improvements or deprecations
+      - Best practices for current version
+    </action>
+    **EXTERNAL CONTEXT INCLUSION:** <action>Include in story any critical latest information the developer needs:
+      - Specific library versions and why chosen
+      - API endpoints with parameters and authentication
+      - Recent security patches or considerations
+      - Performance optimization techniques
+      - Migration considerations if upgrading
+    </action>
+  </step>
+
+  <step n="4b" goal="Verify technical claims in story (MANDATORY — cannot skip)">
+    <critical>🔍 TECHNICAL VERIFICATION GATE — Prevent unverified specs from reaching Dev Agent!</critical>
+    <critical>🚨 "Research" ≠ "Verification". Step 4 gathered information; this step CONFIRMS it against reality.</critical>
+    <critical>DO NOT SKIP THIS STEP. Unverified technical specs are the #1 cause of full-story implementation failures.</critical>
+
+    <action>Scan the story Dev Notes for ALL external technical claims to verify:</action>
+
+    <!-- 1. CLI tools and commands -->
+    <action>For EACH CLI tool or command referenced in the story:
+      1. Run `npx &lt;package&gt; --help` or `&lt;tool&gt; --help` to confirm the command exists
+      2. Verify that specific subcommands, flags, and options mentioned in the story actually exist
+      3. If verified → tag the claim with [verified] in the story
+      4. If incorrect → fix the story spec to match reality and note the correction in Dev Notes
+    </action>
+
+    <!-- 2. External package/library APIs -->
+    <action>For EACH external package API or function signature in the story:
+      1. Check actual type definitions (node_modules, documentation, or package source)
+      2. Verify function names, parameter types, and return types match the story
+      3. Confirm compatibility with the project's package.json version constraints
+      4. If incorrect → update the story with the correct API signature
+    </action>
+
+    <!-- 3. File structure and paths -->
+    <action>For EACH file path or directory structure referenced in the story:
+      1. Run ls or check the actual project directory to confirm existence
+      2. If referencing file contents, read the file to confirm structure matches the story description
+      3. If incorrect → update the story with the correct paths/structure
+    </action>
+
+    <!-- 4. Project internal code references -->
+    <action>For EACH internal function, type, constant, or module referenced in the story:
+      1. Use grep/read to confirm it exists in the codebase with the stated signature
+      2. Verify import paths and module locations are correct
+      3. If incorrect → update the story with the correct references
+    </action>
+
+    <!-- Items that cannot be verified -->
+    <action>For items that CANNOT be verified at story-creation time (network APIs not yet accessible,
+      tools not yet installed, services requiring authentication, etc.):
+      1. Tag the claim with [unverified] in the story
+      2. Add an explicit pre-implementation task for the Dev Agent:
+         "BEFORE implementing: verify [specific claim] by [specific verification method]"
+      3. The Dev Agent MUST verify these before coding against them
+    </action>
+
+    <!-- Verification summary -->
+    <output>**🔍 Technical Verification Summary:**
+      - Verified claims: {{verified_count}}
+      - Corrected claims: {{corrected_count}} (details in Dev Notes)
+      - Unverified claims: {{unverified_count}} (tagged [unverified] with Dev Agent verification tasks)
+    </output>
+  </step>
+
+  <step n="5" goal="Create comprehensive story file">
+    <critical>📝 CREATE ULTIMATE STORY FILE - The developer's master implementation guide!</critical>
+
+    <critical>🎯 STORY 문서 구조 원칙 (반드시 준수):
+      - **Story / Acceptance Criteria / Tasks·Subtasks 섹션**은 "요점"만 간결하게 작성한다.
+        · Story: 역할/원하는 행동/얻을 가치를 한 줄씩.
+        · Acceptance Criteria: 검증 가능한 결과를 한 줄씩.
+        · Tasks·Subtasks: 짧은 동사구로 "무엇을 할지"만.
+      - **배경, 기술적 결정, 코드 예시, API 시그니처, 파일 경로, 라이브러리 버전, 제약, 출처 인용 등
+        모든 상세 내용은 Dev Notes 섹션(및 하위 섹션)에 작성한다.**
+      - Tasks에서 "어떻게 할지"가 필요하면 본문에 직접 쓰지 말고 "→ Dev Notes의 X 참조" 식으로 연결한다.
+      - 동일 정보를 Story/AC/Tasks와 Dev Notes 양쪽에 중복 기재하지 않는다. 상세는 Dev Notes에만.
+      - 이 원칙을 위반한 초안은 작성 후 즉시 재정리하여 상세 내용을 Dev Notes로 이동시킨다.
+    </critical>
+
+    <critical>🛡️ 회귀 시나리오 vs 수동 테스트 분리 원칙 (반드시 준수):
+      - 본 스토리의 AC 는 "새 기능에 대한 직접 검증 가능한 결과" 만 포함한다. 기존 동작 보존 (회귀) 항목은 AC 에 섞지 않는다.
+      - 회귀 시나리오 / Regression Tests / "기존 동작 보존 검증" 항목을 스토리에 포함해야 한다면 다음 규칙을 지킨다:
+        · Dev Notes 내 별도 하위 섹션 (예: "Regression Risk & Automated Coverage") 에 분리해서 작성한다.
+        · 해당 섹션 상단에 명시한다:
+          "이 항목은 자동 테스트 / 코드 리뷰 / 정적 검사로 커버되는 회귀 위험이며,
+           Dev Agent 의 사용자 대상 수동 테스트 안내에 자동 포함되지 않는다."
+        · Tasks / Subtasks 에 회귀 관련 작업이 들어가야 하면 "(자동 테스트 / CI 영역, 수동 테스트 자동 포함 대상 아님)" 주석을 붙인다.
+      - Why: Dev Agent 가 스토리의 회귀 시나리오를 새 기능 수동 테스트로 오해해 본 작업 검증 효율이 떨어지는 사고를 방지한다.
+    </critical>
+
+    <action>Initialize from template.md:
+    {default_output_file}</action>
+    <template-output file="{default_output_file}">story_header</template-output>
+
+    <!-- Story foundation from epics analysis -->
+    <template-output
+      file="{default_output_file}">story_requirements</template-output>
+
+    <!-- Developer context section - MOST IMPORTANT PART -->
+    <template-output file="{default_output_file}">
+    developer_context_section</template-output> **DEV AGENT GUARDRAILS:** <template-output file="{default_output_file}">
+    technical_requirements</template-output>
+    <template-output file="{default_output_file}">architecture_compliance</template-output>
+    <template-output
+      file="{default_output_file}">library_framework_requirements</template-output>
+    <template-output file="{default_output_file}">
+    file_structure_requirements</template-output>
+    <template-output file="{default_output_file}">testing_requirements</template-output>
+
+    <!-- Retrospective learnings -->
+    <check
+      if="retrospective analysis completed AND relevant items found">
+      <template-output file="{default_output_file}">retrospective_learnings</template-output>
+    </check>
+
+    <!-- Previous story intelligence -->
+    <check
+      if="previous story learnings available">
+      <template-output file="{default_output_file}">previous_story_intelligence</template-output>
+    </check>
+
+    <!-- Git intelligence -->
+    <check
+      if="git analysis completed">
+      <template-output file="{default_output_file}">git_intelligence_summary</template-output>
+    </check>
+
+    <!-- Latest technical specifics -->
+    <check if="web research completed">
+      <template-output file="{default_output_file}">latest_tech_information</template-output>
+    </check>
+
+    <!-- Project context reference -->
+    <template-output
+      file="{default_output_file}">project_context_reference</template-output>
+
+    <!-- Final status update -->
+    <template-output file="{default_output_file}">
+    story_completion_status</template-output>
+
+    <!-- CRITICAL: Set status to ready-for-dev -->
+    <action>Set story Status to: "ready-for-dev"</action>
+    <action>Add completion note: "Ultimate
+    context engine analysis completed - comprehensive developer guide created"</action>
+  </step>
+
+  <step n="5.5" goal="스토리 타입 결정 및 GitHub Issue 생성">
+    <critical>🏷️ STORY TYPE DETERMINATION - Consistent labeling for issues and commits!</critical>
+
+    <!-- 스토리 타입 결정 -->
+    <action>스토리 내용 분석하여 story-type 결정:
+      - 새 기능 구현, 새로운 기능 추가 → feat
+      - 버그/오류 수정, 문제 해결 → fix
+      - 코드 개선/리팩토링, 성능 개선 → refactor
+      - 문서/주석 작업 → docs
+      - 테스트 추가/수정 → test
+      - 설정/빌드/의존성/기타 → chore
+    </action>
+    <action>스토리 파일의 Story-Type 필드에 결정된 타입 기록</action>
+
+    <!-- GitHub Issue 생성 -->
+    <check if="git repository detected (run: git rev-parse --git-dir)">
+      <action>이슈 제목 생성: "[Epic {{epic_num}}] Story {{epic_num}}.{{story_num}}: {{story_title}}"</action>
+      <action>이슈 본문 생성:
+        ## Story
+        {{story_statement}}
+
+        ## Acceptance Criteria
+        {{ac_list}}
+
+        ## Story File
+        `{{story_file_path}}`
+      </action>
+      <action>이슈 생성 명령 실행:
+        gh issue create \
+          --title "[Epic {{epic_num}}] Story {{epic_num}}.{{story_num}}: {{story_title}}" \
+          --body "{{issue_body}}" \
+          --label "{{story_type}},epic-{{epic_num}}"
+      </action>
+
+      <check if="gh 명령 성공">
+        <action>반환된 이슈 번호 추출 (출력에서 파싱)</action>
+        <action>이슈 URL 추출</action>
+        <action>스토리 파일의 GitHub Tracking 섹션 업데이트:
+          - Issue: #{{issue_number}}
+          - Issue URL: {{issue_url}}
+        </action>
+        <action>브랜치명 결정: {{story_type}}/{{epic_num}}-{{story_num}}-{{story_title_kebab}}</action>
+        <action>스토리 파일의 GitHub Tracking > Branch 필드에 브랜치명 기록</action>
+        <output>✅ GitHub Issue #{{issue_number}} 생성됨: {{issue_url}}</output>
+      </check>
+
+      <check if="gh 명령 실패">
+        <output>⚠️ GitHub 이슈 생성 실패: {{error_message}}
+
+          **해결 방법:**
+          1. `gh auth login`으로 GitHub CLI 인증
+          2. 수동으로 이슈 생성 후 SM에게 `*link-issue` 요청
+          3. GitHub Tracking 섹션을 수동으로 업데이트
+
+          스토리 파일은 정상적으로 생성되었습니다. GitHub 연동은 나중에 진행할 수 있습니다.
+        </output>
+      </check>
+    </check>
+
+    <check if="git repository NOT detected">
+      <output>ℹ️ Git 저장소가 감지되지 않음 - GitHub 연동 건너뜀
+        스토리 파일은 정상적으로 생성됩니다.
+      </output>
+    </check>
+  </step>
+
+  <step n="5.7" goal="스토리 문서 검토 요청">
+    <critical>📋 STORY REVIEW - 사용자 검토를 통해 스토리 품질 확보!</critical>
+
+    <action>작성된 스토리 파일의 핵심 내용 요약 출력:</action>
+    <output>**📋 스토리 문서 검토 요청**
+
+      **Story {{epic_num}}.{{story_num}}: {{story_title}}**
+      - Story Type: {{story_type}}
+      - File: {{story_file}}
+
+      **Story:**
+      {{story_statement}}
+
+      **Acceptance Criteria:**
+      {{ac_summary}}
+
+      **Tasks:**
+      {{tasks_summary}}
+
+      스토리 파일 전체 내용은 `{{story_file}}`에서 확인할 수 있습니다.
+    </output>
+
+    <ask>스토리 문서를 검토해 주세요. 수정이 필요하면 피드백을, 승인하시면 '확인' 또는 'ok'를 입력해 주세요:</ask>
+
+    <check if="사용자가 수정 피드백 제공">
+      <action>피드백 내용에 따라 스토리 파일 수정</action>
+      <action>수정된 내용 요약 출력</action>
+      <ask>수정 사항을 반영했습니다. 추가 수정이 필요하면 피드백을, 승인하시면 '확인'을 입력해 주세요:</ask>
+      <note>사용자가 승인할 때까지 수정-재검토 반복</note>
+    </check>
+
+    <check if="사용자가 승인 (확인, ok, 좋아, approve 등)">
+      <output>✅ 스토리 문서 검토 완료 - 브랜치 생성 및 커밋을 진행합니다.</output>
+      <action>GOTO step 5.8</action>
+    </check>
+  </step>
+
+  <step n="5.8" goal="Git 브랜치 생성 및 스토리 문서 커밋">
+    <critical>🌿 GIT BRANCH & COMMIT - 검토 완료된 스토리 문서를 브랜치에 커밋!</critical>
+
+    <check if="git repository detected (run: git rev-parse --git-dir)">
+      <check if="{{branch_name}}이 비어있음">
+        <action>브랜치명 결정: {{story_type}}/{{epic_num}}-{{story_num}}-{{story_title_kebab}}</action>
+        <action>스토리 파일의 GitHub Tracking > Branch 필드에 브랜치명 기록</action>
+      </check>
+
+      <action>현재 브랜치 확인: git branch --show-current</action>
+
+      <!-- 1순위: 이미 올바른 브랜치에 있음 -->
+      <check if="현재 브랜치가 {{branch_name}}과 동일">
+        <output>✅ 이미 올바른 브랜치에 있음: {{branch_name}}</output>
+      </check>
+
+      <!-- 2순위: 로컬에 해당 브랜치 존재 -->
+      <check if="현재 브랜치가 {{branch_name}}이 아님">
+        <action>로컬 브랜치 존재 확인: git branch --list {{branch_name}}</action>
+
+        <check if="로컬에 {{branch_name}} 브랜치가 존재">
+          <action>기존 로컬 브랜치로 체크아웃: git checkout {{branch_name}}</action>
+          <output>🌿 기존 로컬 브랜치로 체크아웃: {{branch_name}}</output>
+        </check>
+
+        <!-- 3순위: 리모트에 해당 브랜치 존재 -->
+        <check if="로컬에 {{branch_name}} 브랜치가 없음">
+          <action>리모트 브랜치 존재 확인: git ls-remote --heads origin {{branch_name}}</action>
+
+          <check if="리모트에 {{branch_name}} 브랜치가 존재">
+            <action>리모트 브랜치 기반으로 로컬 체크아웃: git checkout -b {{branch_name}} origin/{{branch_name}}</action>
+            <output>🌿 리모트 브랜치에서 로컬 체크아웃: {{branch_name}}</output>
+          </check>
+
+          <!-- 4순위: 어디에도 없음 → 새 브랜치 생성 -->
+          <check if="리모트에도 {{branch_name}} 브랜치가 없음">
+            <action>새 브랜치 생성 및 체크아웃: git checkout -b {{branch_name}}</action>
+            <output>🌿 새 브랜치 생성됨: {{branch_name}}</output>
+          </check>
+        </check>
+      </check>
+
+      <!-- 스토리 문서 커밋 -->
+      <action>스토리 파일 스테이징: git add {{story_file}}</action>
+      <action>스토리 문서 커밋:
+        git commit -m "docs(story-{{epic_num}}.{{story_num}}): {{story_title}} 스토리 문서 생성"
+      </action>
+
+      <check if="커밋 성공">
+        <output>✅ 스토리 문서 커밋 완료: {{branch_name}}</output>
+      </check>
+
+      <check if="커밋 실패">
+        <output>⚠️ 스토리 문서 커밋 실패: {{error_message}}
+          수동으로 커밋해 주세요: git add {{story_file}} && git commit -m "docs(story-{{epic_num}}.{{story_num}}): {{story_title}}"
+        </output>
+      </check>
+    </check>
+
+    <check if="git repository NOT detected">
+      <output>ℹ️ Git 저장소가 감지되지 않음 - 브랜치 생성 및 커밋 건너뜀</output>
+    </check>
+  </step>
+
+  <step n="6" goal="Update sprint status and finalize">
+    <invoke-task>Validate against checklist at {installed_path}/checklist.md using _bmad/core/tasks/validate-workflow.xml</invoke-task>
+    <action>Save story document unconditionally</action>
+
+    <!-- Update sprint status -->
+    <check if="sprint status file exists">
+      <action>Update {{sprint_status}}</action>
+      <action>Load the FULL file and read all development_status entries</action>
+      <action>Find development_status key matching {{story_key}}</action>
+      <action>Verify current status is "backlog" (expected previous state)</action>
+      <action>Update development_status[{{story_key}}] = "ready-for-dev"</action>
+      <action>Save file, preserving ALL comments and structure including STATUS DEFINITIONS</action>
+    </check>
+
+    <action>Report completion</action>
+    <output>**🎯 ULTIMATE BMad Method STORY CONTEXT CREATED, {user_name}!**
+
+      **Story Details:**
+      - Story ID: {{story_id}}
+      - Story Key: {{story_key}}
+      - Story Type: {{story_type}}
+      - File: {{story_file}}
+      - Status: ready-for-dev
+
+      **GitHub Tracking:**
+      - Issue: #{{issue_number}} ({{issue_url}})
+      - Branch: {{branch_name}} (체크아웃 완료, 스토리 문서 커밋됨)
+
+      **The developer now has everything needed for flawless implementation!**
+    </output>
+
+    <critical>🛑 PHASE BOUNDARY: create-story 워크플로우가 완료되었습니다. dev-story, code-review 등 다른 워크플로우를 자동으로 실행하지 마세요. 사용자의 다음 지시를 기다리세요.</critical>
+    <action>HALT - Workflow complete. Await user's next instruction.</action>
+  </step>
+
+</workflow>
