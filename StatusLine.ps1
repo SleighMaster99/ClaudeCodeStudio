@@ -468,25 +468,48 @@ function Compute-FableUsage {
 
 function Get-CachedFableUsage {
     $cachePath = Join-Path $PSScriptRoot '.fable_cache.json'
+    $prev = $null
+    $lastFailed = $false
+    $age = $null
     if (Test-Path $cachePath) {
         try {
             $cache = Get-Content $cachePath -Raw -Encoding UTF8 | ConvertFrom-Json
             $age = (Get-Date) - [datetime]$cache.at
-            if ($age.TotalSeconds -lt 60) {
-                if ($null -ne $cache.pct) {
-                    return @{ pct = [double]$cache.pct; resets_at = [string]$cache.resets_at }
+            $lastFailed = [bool]$cache.fail
+            if ($null -ne $cache.pct) {
+                # 주간 리셋(resets_at)이 지난 값은 이전 주기 수치이므로 폐기
+                $expired = $false
+                if ($cache.resets_at) {
+                    try {
+                        $reset = [DateTimeOffset]::Parse([string]$cache.resets_at, [System.Globalization.CultureInfo]::InvariantCulture)
+                        if ($reset -le [DateTimeOffset]::Now) { $expired = $true }
+                    } catch {}
                 }
-                return $null
+                if (-not $expired) {
+                    $prev = @{ pct = [double]$cache.pct; resets_at = [string]$cache.resets_at }
+                }
             }
         } catch {}
     }
+    # 재조회 간격: 성공 후 60초, 실패 후 5분 (usage API 429 스로틀 완화)
+    $ttl = 60
+    if ($lastFailed) { $ttl = 300 }
+    if ($null -ne $age -and $age.TotalSeconds -lt $ttl) { return $prev }
+
     $u = Compute-FableUsage
     try {
         $obj = @{ at = (Get-Date).ToString('o') }
-        if ($u) { $obj.pct = $u.pct; $obj.resets_at = $u.resets_at }
+        if ($u) {
+            $obj.pct = $u.pct; $obj.resets_at = $u.resets_at
+        } else {
+            # 조회 실패 시 직전 성공값을 유지해 표시 공백 방지 (stale-while-error)
+            $obj.fail = $true
+            if ($prev) { $obj.pct = $prev.pct; $obj.resets_at = $prev.resets_at }
+        }
         $obj | ConvertTo-Json | Set-Content $cachePath -Encoding UTF8
     } catch {}
-    return $u
+    if ($u) { return $u }
+    return $prev
 }
 
 $script:_planType = $null
