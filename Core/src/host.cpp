@@ -1,8 +1,7 @@
-// Core - 창 + WebView2 호스트 + 좌측 탭 셸(web/) 서빙.
-//
-// exe(ClaudeCodeStudio)는 Core_Run() 하나만 호출한다. WebView2 컨트롤을 Win32
-// 창에 얹고, web/ 폴더를 가상 호스트로 매핑해 index.html(탭 셸)을 띄운다.
-// 기능 모듈(Sync/StatusBar) 로딩과 JS<->C++ 메시지 라우터는 P1~ 에서 이 위에 얹는다.
+// Core - 창 + WebView2 호스트 + 좌측 탭 셸(web/) 서빙 + 모듈 로딩/메시지 중계.
+// exe(ClaudeCodeStudio)는 Core_Run() 하나만 호출한다.
+//   JS(부모 셸) -> C++ : postMessage(JSON 문자열) -> WebMessageReceived -> Router_Handle
+//   C++ -> JS         : Host_PostToUi(JSON) -> PostWebMessageAsString -> 부모 셸이 iframe 으로 중계
 #include <windows.h>
 #include <wrl.h>
 #include <wrl/event.h>
@@ -12,19 +11,34 @@
 #include <filesystem>
 
 #include "core_api.h"
+#include "core_internal.h"
 
 using namespace Microsoft::WRL;
 namespace fs = std::filesystem;
 
 static ComPtr<ICoreWebView2Controller> g_controller;
 static ComPtr<ICoreWebView2>           g_webview;
-static HWND         g_hwnd   = nullptr;
+static HWND         g_hwnd = nullptr;
 static std::wstring g_webDir;   // <exe dir>\web
 
 static const wchar_t* kVirtualHost = L"claudecodestudio.local";
 static const wchar_t* kStartUrl    = L"https://claudecodestudio.local/index.html";
 
-// ---------- environment helpers ----------
+// ---------- string / env helpers ----------
+static std::wstring Widen(const std::string& s) {
+    if (s.empty()) return L"";
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
+    std::wstring w(n, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), w.data(), n);
+    return w;
+}
+static std::string Narrow(const std::wstring& w) {
+    if (w.empty()) return "";
+    int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(), nullptr, 0, nullptr, nullptr);
+    std::string s(n, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(), s.data(), n, nullptr, nullptr);
+    return s;
+}
 static std::wstring EnvVar(const wchar_t* name) {
     DWORD n = GetEnvironmentVariableW(name, nullptr, 0);
     if (n == 0) return L"";
@@ -45,13 +59,18 @@ static void ResizeToClient() {
     RECT rc; GetClientRect(g_hwnd, &rc);
     g_controller->put_Bounds(rc);
 }
-
 static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_SIZE:    ResizeToClient(); return 0;
         case WM_DESTROY: PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(h, msg, wp, lp);
+}
+
+// 모듈이 부르는 post 콜백 — 결과 JSON 을 부모 셸(JS)로 전달.
+void Host_PostToUi(const char* json) {
+    if (g_webview && json)
+        g_webview->PostWebMessageAsString(Widen(json).c_str());
 }
 
 static void InitWebView() {
@@ -80,6 +99,23 @@ static void InitWebView() {
                                     kVirtualHost, g_webDir.c_str(),
                                     COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
                             }
+
+                            // JS(부모 셸) → C++ : JSON 문자열 수신 → 라우터로 분배
+                            EventRegistrationToken tok{};
+                            g_webview->add_WebMessageReceived(
+                                Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                                    [](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                                        LPWSTR raw = nullptr;
+                                        if (SUCCEEDED(args->TryGetWebMessageAsString(&raw)) && raw) {
+                                            Router_Handle(Narrow(raw));
+                                            CoTaskMemFree(raw);
+                                        }
+                                        return S_OK;
+                                    }).Get(), &tok);
+
+                            // 모듈 로드 + 각 모듈에 UI post 콜백 전달
+                            Modules_LoadAll(Host_PostToUi);
+
                             ResizeToClient();
                             g_webview->Navigate(kStartUrl);
                             return S_OK;

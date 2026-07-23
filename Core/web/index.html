@@ -15,10 +15,7 @@
     </nav>
     <main class="content">
       <section class="pane active" id="pane-sync">
-        <div class="placeholder">
-          <h2>설정 동기화</h2>
-          <p>Sync 모듈은 P1에서 이식됩니다.</p>
-        </div>
+        <iframe id="frame-sync" class="module-frame" src="sync/index.html"></iframe>
       </section>
       <section class="pane" id="pane-statusbar">
         <div class="placeholder">
@@ -30,9 +27,9 @@
   </div>
 
   <script>
-    // P0: 순수 클라이언트 탭 전환. C++<->JS 메시지 라우팅은 P1에서 도입.
-    const tabs  = document.querySelectorAll('.tab');
-    const panes = document.querySelectorAll('.pane');
+    // 좌측 탭 전환
+    var tabs  = document.querySelectorAll('.tab');
+    var panes = document.querySelectorAll('.pane');
     tabs.forEach(function (tab) {
       tab.addEventListener('click', function () {
         tabs.forEach(function (t) { t.classList.remove('active'); });
@@ -42,6 +39,29 @@
         if (pane) pane.classList.add('active');
       });
     });
+
+    // 메시지 중계: 모듈 iframe <-> C++ 호스트
+    //   iframe -> (parent postMessage) -> chrome.webview.postMessage(JSON) -> C++
+    //   C++ -> chrome.webview message -> iframe.contentWindow.postMessage -> iframe
+    var wv = (window.chrome && window.chrome.webview) ? window.chrome.webview : null;
+    var syncFrame = document.getElementById('frame-sync');
+
+    // 모듈 iframe 이 부모로 보낸 요청 객체를 JSON 문자열로 C++ 에 전달
+    window.addEventListener('message', function (e) {
+      if (!wv) return;
+      if (e.source === syncFrame.contentWindow && e.data && typeof e.data === 'object') {
+        wv.postMessage(JSON.stringify(e.data));
+      }
+    });
+
+    // C++ 결과(JSON 문자열)를 해당 모듈 iframe 으로 중계 (P1: Sync 모듈만)
+    if (wv) {
+      wv.addEventListener('message', function (e) {
+        if (syncFrame && syncFrame.contentWindow) {
+          syncFrame.contentWindow.postMessage(e.data, '*');
+        }
+      });
+    }
   </script>
 </body>
 </html>
