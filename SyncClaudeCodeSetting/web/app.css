@@ -161,6 +161,7 @@ button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
 /* 초기 설정 (미설정 시) */
 .setup { flex:1; display:flex; align-items:center; justify-content:center; padding:24px; }
+.setup[hidden] { display:none; }   /* [hidden] 이 .setup 의 display:flex 에 지지 않도록 */
 .setup-box { max-width:440px; width:100%; text-align:center; }
 .setup-mark { font-size:34px; color:var(--accent); margin-bottom:6px; }
 .setup-title { font-family:var(--font-mono); font-size:20px; font-weight:600; margin:0 0 8px; }

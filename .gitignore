@@ -27,3 +27,6 @@ Editor/obj/
 # C++ 빌드 산출물 (ClaudeCodeStudio 솔루션)
 /bin/
 /obj/
+
+# NSIS 인스톨러 산출물
+/installer/*.exe
