@@ -119,7 +119,13 @@ static void Result(bool ok, const std::string& msg, const std::string& detail) {
 }
 
 static std::wstring FindRoot() {
-    wchar_t buf[MAX_PATH]; GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    // 이 dll(모듈) 자기 위치를 기준으로 상위에서 StatusLine.ps1 을 찾는다.
+    // exe(호스트) 기준이 아니라 dll 기준이라, GUI 앱이든 단위 테스트든 동일하게 동작한다.
+    HMODULE self = nullptr;
+    GetModuleHandleExW(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCWSTR>(&FindRoot), &self);
+    wchar_t buf[MAX_PATH]; GetModuleFileNameW(self, buf, MAX_PATH);
     fs::path dir = fs::path(buf).parent_path();
     for (int i = 0; i < 8; ++i) {
         std::error_code ec;
@@ -145,9 +151,24 @@ static void CmdSave(const std::string& req) {
     Result(true, "레이아웃을 저장했습니다", "");
 }
 
+// StatusLine.ps1 경로를 statusLine command 인자로 변환한다.
+// g_scriptPath 가 %USERPROFILE% 하위(= 설치본)면 ~ 기반 forward-slash 경로(PC 공통,
+// Git Bash 가 ~ 확장 — D10 실측 확인)를 따옴표 없이, 아니면 절대경로를 따옴표로 반환.
+static std::string ScriptArg() {
+    std::wstring home = EnvVar(L"USERPROFILE");
+    std::wstring p = g_scriptPath;
+    if (!home.empty() && p.size() > home.size() &&
+        _wcsnicmp(p.c_str(), home.c_str(), (int)home.size()) == 0) {
+        std::wstring rel = L"~" + p.substr(home.size());   // ~\AppData\...\StatusLine.ps1
+        for (auto& c : rel) if (c == L'\\') c = L'/';       // ~/AppData/.../StatusLine.ps1
+        return Narrow(rel);                                 // 따옴표 없이(bash ~ 확장)
+    }
+    return "\"" + Narrow(p) + "\"";                         // 절대경로는 따옴표
+}
+
 // settings.json 의 statusLine 값(객체)만 새 값으로 교체/삽입, 나머지 필드 보존.
 static void ApplyStatusLine() {
-    std::string rawCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File \"" + Narrow(g_scriptPath) + "\"";
+    std::string rawCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File " + ScriptArg();
     std::string obj = "{ \"type\": \"command\", \"command\": \"" + JsonEsc(rawCmd) + "\" }";
 
     std::string s = ReadFileUtf8(g_settingsPath);
@@ -198,7 +219,8 @@ MODULE_API void Module_Init(PostToUiFn post) {
     g_root = FindRoot();
     g_configPath   = g_root + L"\\config.json";
     g_scriptPath   = g_root + L"\\StatusLine.ps1";
-    g_settingsPath = EnvVar(L"USERPROFILE") + L"\\.claude\\settings.json";
+    std::wstring so = EnvVar(L"CCSTUDIO_SETTINGS_PATH");   // 검증용 settings 경로 오버라이드
+    g_settingsPath = so.empty() ? (EnvVar(L"USERPROFILE") + L"\\.claude\\settings.json") : so;
 }
 MODULE_API void Module_Handle(const char* reqJson) {
     std::string req = reqJson ? reqJson : "";
