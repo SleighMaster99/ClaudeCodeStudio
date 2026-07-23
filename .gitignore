@@ -23,3 +23,7 @@ Editor/obj/
 # Claude Code (로컬 설정)
 .claude/settings.local.json
 .claude/plans/
+
+# C++ 빌드 산출물 (ClaudeCodeStudio 솔루션)
+/bin/
+/obj/

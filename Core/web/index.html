@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClaudeCodeStudio</title>
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <div class="app">
+    <nav class="tabbar">
+      <div class="brand">ClaudeCodeStudio</div>
+      <button class="tab active" data-tab="sync">설정 동기화</button>
+      <button class="tab" data-tab="statusbar">상태바 설정</button>
+    </nav>
+    <main class="content">
+      <section class="pane active" id="pane-sync">
+        <div class="placeholder">
+          <h2>설정 동기화</h2>
+          <p>Sync 모듈은 P1에서 이식됩니다.</p>
+        </div>
+      </section>
+      <section class="pane" id="pane-statusbar">
+        <div class="placeholder">
+          <h2>상태바 설정</h2>
+          <p>StatusBar 모듈은 P2에서 이식됩니다.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // P0: 순수 클라이언트 탭 전환. C++<->JS 메시지 라우팅은 P1에서 도입.
+    const tabs  = document.querySelectorAll('.tab');
+    const panes = document.querySelectorAll('.pane');
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        tabs.forEach(function (t) { t.classList.remove('active'); });
+        panes.forEach(function (p) { p.classList.remove('active'); });
+        tab.classList.add('active');
+        var pane = document.getElementById('pane-' + tab.dataset.tab);
+        if (pane) pane.classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
