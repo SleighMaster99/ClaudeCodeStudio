@@ -2,18 +2,21 @@
 // Core 가 LoadLibrary + GetProcAddress 로 Module_Info/Init/Handle 을 바인딩해 구동한다.
 //   요청: Module_Handle(reqJson)   예: {"module":"sync","cmd":"pull","arg":""}
 //   응답: Module_Init 에서 받은 post 콜백으로 JSON 문자열 회신 (type: status/log/result)
-// git 로직은 동기화 프로토타입에서 그대로 이식했고, WebView2/창 코드는 Core 가
-// 전담하므로 제거했다.
+// git 로직은 동기화 프로토타입에서 이식했고, WebView2/창 코드는 Core 가 전담한다.
+// 미설정(git repo 아님) 감지 시 status.configured=false 로 알려 초기 설정(부트스트랩)을 유도한다.
 #include <windows.h>
 
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <filesystem>
 
 #include "module_api.h"
 
+namespace fs = std::filesystem;
+
 static PostToUiFn   g_post = nullptr;
-static std::wstring g_repoDir;   // %USERPROFILE%\.claude
+static std::wstring g_repoDir;   // 기본 %USERPROFILE%\.claude (테스트 시 CCSTUDIO_CLAUDE_DIR)
 
 // ---------- string helpers ----------
 static std::wstring Widen(const std::string& s) {
@@ -100,7 +103,6 @@ static std::string JsonEsc(const std::string& s) {
     }
     return o;
 }
-// reqJson 에서 문자열/숫자 값 하나를 추출 (cmd/arg 용, 단순 파서).
 static std::string JsonGet(const std::string& json, const std::string& key) {
     std::string pat = "\"" + key + "\"";
     size_t p = json.find(pat);
@@ -138,6 +140,13 @@ static std::string NowStamp() {
                   st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute);
     return b;
 }
+static std::string NowStampFile() {
+    SYSTEMTIME st; GetLocalTime(&st);
+    char b[24];
+    std::snprintf(b, sizeof(b), "%04d%02d%02d-%02d%02d%02d",
+                  st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    return b;
+}
 static void Result(bool ok, const std::string& msg, const std::string& detail) {
     std::string j = "{\"type\":\"result\",\"ok\":";
     j += ok ? "true" : "false";
@@ -145,8 +154,19 @@ static void Result(bool ok, const std::string& msg, const std::string& detail) {
     PostToWeb(j);
 }
 
+// git 워킹트리(= 설정 완료) 여부.
+static bool IsConfigured() {
+    std::string out;
+    DWORD code = Git(L"rev-parse --is-inside-work-tree", out);
+    return code == 0 && Trim(out) == "true";
+}
+
 // ---------- commands ----------
 static void CmdStatus() {
+    if (!IsConfigured()) {
+        PostToWeb("{\"type\":\"status\",\"configured\":false}");
+        return;
+    }
     std::string branch, dirty, remote, headHash, remoteHash, counts;
     Git(L"rev-parse --abbrev-ref HEAD", branch);      branch = Trim(branch);
     Git(L"status --porcelain", dirty);
@@ -159,7 +179,7 @@ static void CmdStatus() {
     if (Git(L"rev-list --left-right --count origin/main...HEAD", counts) == 0)
         std::sscanf(counts.c_str(), "%d %d", &behind, &ahead);
 
-    std::string j = "{\"type\":\"status\",";
+    std::string j = "{\"type\":\"status\",\"configured\":true,";
     j += "\"branch\":\""     + JsonEsc(branch)     + "\",";
     j += "\"clean\":"        + std::string(clean ? "true" : "false") + ",";
     j += "\"ahead\":"        + std::to_string(ahead)  + ",";
@@ -174,7 +194,6 @@ static void CmdLog() {
     std::string headHash, remoteHash, raw;
     Git(L"rev-parse --short HEAD", headHash);           headHash = Trim(headHash);
     Git(L"rev-parse --short origin/main", remoteHash);   remoteHash = Trim(remoteHash);
-    // Fields separated by 0x1f, records by 0x1e (no spaces so it stays one argv token).
     Git(L"log -8 --pretty=format:%h\x1f%cr\x1f%s\x1e", raw);
 
     std::string j = "{\"type\":\"log\",\"head\":\"" + JsonEsc(headHash) +
@@ -239,8 +258,45 @@ static void CmdPush() {
 }
 
 static void CmdRevert(const std::string& hash) {
-    // State-changing history rewrite — deferred until the semantics are settled.
     Result(false, "되돌리기는 다음 버전에서 구현됩니다", "hash=" + hash);
+}
+
+// 화이트리스트 항목이 있으면 .sync-backup-<시각>/ 으로 복사 (reset --hard 이전 안전망).
+static void BackupExisting() {
+    const wchar_t* items[] = { L"settings.json", L"CLAUDE.md", L"commands", L"hooks", L"output-styles" };
+    std::error_code ec;
+    fs::path backupDir = fs::path(g_repoDir) / (L".sync-backup-" + Widen(NowStampFile()));
+    bool created = false;
+    for (const wchar_t* it : items) {
+        fs::path src = fs::path(g_repoDir) / it;
+        if (!fs::exists(src, ec)) continue;
+        if (!created) { fs::create_directories(backupDir, ec); created = true; }
+        fs::copy(src, backupDir / it,
+                 fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+    }
+}
+
+// 초기 설정: 미설정 ~/.claude 를 git 으로 부트스트랩해 origin/main 과 정렬.
+static void CmdBootstrap(const std::string& url) {
+    if (IsConfigured()) { Result(false, "이미 설정되어 있습니다", ""); CmdStatus(); CmdLog(); return; }
+
+    std::string repoUrl = url.empty()
+        ? "https://github.com/SleighMaster99/claude-code-settings.git" : url;
+    std::string out, tmp;
+
+    if (Git(L"init -b main", tmp) != 0) { Result(false, "저장소 초기화(git init) 실패", Trim(tmp)); return; }
+    Git(L"remote remove origin", tmp);   // 잔여 origin 제거(있으면)
+    if (Git(L"remote add origin " + Widen(repoUrl), tmp) != 0) { Result(false, "원격(origin) 추가 실패", Trim(tmp)); return; }
+    if (Git(L"fetch origin", out) != 0) { Result(false, "원격에서 가져오기 실패 (저장소 URL/로그인 확인)", Trim(out)); return; }
+
+    BackupExisting();
+
+    if (Git(L"reset --hard origin/main", out) != 0) { Result(false, "서버 설정 정렬 실패", Trim(out)); return; }
+    Git(L"branch --set-upstream-to=origin/main main", tmp);
+
+    Result(true, "초기 설정 완료", "서버 설정을 가져왔습니다. 기존 설정은 .sync-backup 에 백업했습니다");
+    CmdStatus();
+    CmdLog();
 }
 
 // ---------- module exports ----------
@@ -249,17 +305,19 @@ MODULE_API const char* Module_Info() {
 }
 MODULE_API void Module_Init(PostToUiFn post) {
     g_post = post;
-    g_repoDir = EnvVar(L"USERPROFILE") + L"\\.claude";
+    std::wstring override = EnvVar(L"CCSTUDIO_CLAUDE_DIR");   // 테스트/검증용 repoDir 오버라이드
+    g_repoDir = override.empty() ? (EnvVar(L"USERPROFILE") + L"\\.claude") : override;
 }
 MODULE_API void Module_Handle(const char* reqJson) {
     std::string req = reqJson ? reqJson : "";
     std::string cmd = JsonGet(req, "cmd");
     std::string arg = JsonGet(req, "arg");
-    if      (cmd == "status")  CmdStatus();
-    else if (cmd == "log")     CmdLog();
-    else if (cmd == "refresh") CmdFetch();
-    else if (cmd == "pull")    CmdPull();
-    else if (cmd == "push")    CmdPush();
-    else if (cmd == "revert")  CmdRevert(arg);
-    else                       Result(false, "알 수 없는 명령", cmd);
+    if      (cmd == "status")    CmdStatus();
+    else if (cmd == "log")       CmdLog();
+    else if (cmd == "refresh")   CmdFetch();
+    else if (cmd == "pull")      CmdPull();
+    else if (cmd == "push")      CmdPush();
+    else if (cmd == "revert")    CmdRevert(arg);
+    else if (cmd == "bootstrap") CmdBootstrap(arg);
+    else                         Result(false, "알 수 없는 명령", cmd);
 }

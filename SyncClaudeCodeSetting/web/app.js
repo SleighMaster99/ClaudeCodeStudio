@@ -1,7 +1,6 @@
 "use strict";
 
-// 이 UI 는 Core 셸의 iframe 안에서 동작한다. C++ 호스트와는 부모(Core 셸)를 통해
-// 중계로 통신한다 (WebView2 sub-frame 의 chrome.webview 주입에 의존하지 않기 위함).
+// iframe 안에서 동작. C++ 호스트와는 부모(Core 셸)를 통해 중계로 통신한다.
 //   보내기: window.parent.postMessage({module,cmd,arg})  -> 부모가 chrome.webview 로 전달
 //   받기:   부모가 C++ 결과(JSON)를 이 iframe 으로 postMessage -> message 이벤트
 function send(cmd, arg) {
@@ -21,6 +20,20 @@ function showToast(text, ok) {
 }
 
 function renderStatus(s) {
+  const setup = $("setup");
+  const body = document.querySelector(".body");
+
+  // 미설정(git repo 아님) → 초기 설정 화면만 노출
+  if (s.configured === false) {
+    setup.hidden = false;
+    if (body) body.style.display = "none";
+    const sb = $("setupBtn");
+    if (sb) { sb.disabled = false; sb.textContent = "초기 설정 시작"; }
+    return;
+  }
+  setup.hidden = true;
+  if (body) body.style.display = "";
+
   const el = $("status");
   const wire = $("wire");
   const badge = $("statusBadge");
@@ -29,12 +42,11 @@ function renderStatus(s) {
 
   $("nodeRemote").textContent = s.remoteHash ? s.remoteHash : "—";
   $("nodeLocal").textContent = s.headHash ? s.headHash : "—";
-  $("repoUrl").textContent = s.remote || "—";
+  $("repoUrlFoot").textContent = s.remote || "—";
 
   const behind = s.behind | 0, ahead = s.ahead | 0;
   const dirty = !s.clean;
 
-  // reset
   el.className = "status";
   wire.className = "wire dir-none";
   badge.hidden = true;
@@ -124,6 +136,8 @@ function handle(msg) {
     case "log":    renderLog(msg); break;
     case "result":
       showToast(msg.message + (msg.detail ? " — " + msg.detail : ""), msg.ok);
+      // 부트스트랩 등 결과 직후, 초기 설정 화면이면 상태를 다시 조회(성공 시 전환/실패 시 버튼 복구)
+      if (!$("setup").hidden) send("status");
       break;
     default: break;
   }
@@ -142,6 +156,13 @@ window.addEventListener("message", (e) => {
 $("pullBtn").addEventListener("click", () => { if (!$("pullBtn").disabled) send("pull"); });
 $("pushBtn").addEventListener("click", () => { if (!$("pushBtn").disabled) send("push"); });
 $("refreshBtn").addEventListener("click", () => send("refresh"));
+
+$("setupBtn").addEventListener("click", function () {
+  const url = $("repoUrl").value.trim();
+  this.disabled = true;
+  this.textContent = "설정 중…";
+  send("bootstrap", url);
+});
 
 $("themeBtn").addEventListener("click", () => {
   const cur = document.documentElement.getAttribute("data-theme") || "light";
