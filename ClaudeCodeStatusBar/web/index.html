@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>상태바 설정</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="editor">
+  <header class="toolbar">
+    <span class="title">상태바 레이아웃</span>
+    <div class="tools">
+      <button id="addRow" class="btn">+ 줄 추가</button>
+      <button id="reloadBtn" class="btn">되돌리기</button>
+      <button id="saveBtn" class="btn">저장</button>
+      <button id="applyBtn" class="btn primary">저장 &amp; 적용</button>
+    </div>
+  </header>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <div class="main">
+    <aside class="palette">
+      <div class="palette-head">항목 팔레트 — 오른쪽 줄로 끌어다 놓기</div>
+      <div id="paletteBody" class="palette-body"></div>
+    </aside>
+    <section class="canvas">
+      <div class="canvas-head">레이아웃 — 각 줄이 statusLine 한 줄. 칩을 끌어 순서 변경, ×로 삭제</div>
+      <div id="rows" class="rows"></div>
+    </section>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -8,6 +8,7 @@ static std::vector<Module> g_modules;
 // 로드 대상 모듈 DLL (exe 와 같은 폴더). 새 모듈 추가 시 여기에 등록.
 static const wchar_t* kModuleDlls[] = {
     L"SyncClaudeCodeSetting.dll",
+    L"ClaudeCodeStatusBar.dll",
 };
 
 // JSON 문자열에서 문자열/숫자 값 하나 추출 (단순 파서 — id/module/cmd 용).

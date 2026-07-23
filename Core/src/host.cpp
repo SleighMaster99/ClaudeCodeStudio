@@ -69,8 +69,10 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 
 // 모듈이 부르는 post 콜백 — 결과 JSON 을 부모 셸(JS)로 전달.
 void Host_PostToUi(const char* json) {
-    if (g_webview && json)
-        g_webview->PostWebMessageAsString(Widen(json).c_str());
+    if (!g_webview || !json) return;
+    // 현재 모듈 id 를 봉투로 씌운다 → 부모 셸이 env.module 로 iframe 을 골라 중계.
+    std::string env = "{\"module\":\"" + g_currentModule + "\",\"payload\":" + json + "}";
+    g_webview->PostWebMessageAsString(Widen(env).c_str());
 }
 
 static void InitWebView() {

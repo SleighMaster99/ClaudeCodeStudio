@@ -23,5 +23,9 @@ void    Router_Handle(const std::string& jsonMsg);
 // host.cpp — 모듈이 결과를 UI 로 돌려보낼 때 부르는 post 콜백.
 void    Host_PostToUi(const char* json);
 
+// 현재 Module_Handle 실행 중인 모듈 id. post 결과에 봉투 태그를 붙여
+// 부모 셸이 올바른 모듈 iframe 으로 중계하게 한다. router.cpp 정의.
+extern std::string g_currentModule;
+
 // 공용 유틸 (modules.cpp 정의) — JSON 문자열에서 값 하나 추출.
 std::string JsonGetStr(const std::string& json, const std::string& key);
