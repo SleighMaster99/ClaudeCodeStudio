@@ -1,117 +1,89 @@
-# Claude Code StatusBar
+# ClaudeCodeStudio
 
-Claude Code의 하단 statusLine을 커스터마이징하기 위한 도구. 두 파트로 구성:
+Claude Code 설정 관리 Windows 통합 앱 (C++ + WebView2). 좌측 탭 2개:
+- **설정 동기화** — 글로벌 `~/.claude` 를 git 으로 서버 동기화 (`SyncClaudeCodeSetting` 모듈)
+- **상태바 설정** — statusLine 레이아웃(`config.json`) 편집 (`ClaudeCodeStatusBar` 모듈)
 
-1. **PowerShell 런타임** (`StatusLine.ps1`) — Claude Code가 매 stdin마다 호출하는 렌더러
-2. **C# WPF GUI 편집기** (`Editor/`) — 레이아웃을 시각적으로 편집
+statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). 앱은 번들 + 설정만 관리.
 
-## 파일 구조
+> 통합 계획·결정 로그·단계(P0~P5) SSOT: `docs/ClaudeCodeStudio-Integration-Plan.md`.
 
-| 파일/폴더 | 역할 |
-| --- | --- |
-| `StatusLine.ps1` | statusLine 런타임. stdin JSON을 받아 `config.json` 레이아웃대로 멀티라인 출력 |
-| `Editor/` | C# WPF 편집기 프로젝트 (`net9.0-windows`, WinExe) |
-| `config.json` | 레이아웃 정의 (`rows` → 각 줄의 항목 배열) |
-| `usage_config.json` | 플랜별 5시간/주간 한도 (pro / max5x / max20x), API 환산 USD |
-| `.last_input.json` | 직전 호출에서 받은 stdin JSON (디버깅용 자동 저장) |
-| `.usage_cache.json` | `~/.claude/projects/**/*.jsonl` 집계 결과 캐시 (60초 TTL) |
-| `.version_cache.txt` | `claude --version` 결과 캐시 (24시간 TTL) |
+## 프로젝트 구조
 
-### Editor/ 내부
+| 경로 | 종류 | 역할 |
+| --- | --- | --- |
+| `ClaudeCodeStudio/` | exe | 최소 부트스트래퍼 (`WinMain → Core_Run`) |
+| `Core/` | dll | 창 + WebView2 호스트 + 탭 셸 + 모듈 로더(`modules.cpp`)/라우터(`router.cpp`)/호스트(`host.cpp`) |
+| `SyncClaudeCodeSetting/` | dll | 동기화 모듈 (`sync.cpp`: git status/log/pull/push + 초기 설정) |
+| `ClaudeCodeStatusBar/` | dll | 상태바 모듈 (`statusbar.cpp`: config.json I/O + settings.json apply) |
+| `shared/module_api.h` | 헤더 | 모듈 C 계약 (`Module_Info/Init/Handle`, `PostToUiFn`) |
+| `StatusLine.ps1`, `config.json`, `usage_config.json` | 런타임 | statusLine 렌더러 + 레이아웃 + 한도 |
 
-| 경로 | 역할 |
-| --- | --- |
-| `StatusBarEditor.csproj` | WPF 프로젝트 (.NET 9, UseWPF) |
-| `App.xaml(.cs)`, `MainWindow.xaml(.cs)` | 진입점 + 메인 윈도우 |
-| `Models/` | `Item`, `Row`, `Layout`, `ItemTypeInfo`, `ItemCatalog` |
-| `ViewModels/` | `MainViewModel`, `PaletteGroup` |
-| `Services/ConfigStore.cs` | `config.json` 로드/저장 (System.Text.Json) |
-| `Services/SettingsApplier.cs` | `~/.claude/settings.json`의 `statusLine` 필드 갱신 |
-| `Services/ProjectPaths.cs` | `StatusLine.ps1` 위치 자동 탐색해서 프로젝트 루트 결정 |
+각 모듈 dll 은 자기 `web/` UI(HTML/JS)를 소유하고, 빌드 시 `bin/Release/web/<모듈>/` 로 복사된다.
 
-## 빌드/실행
+## 빌드
 
-- 빌드: `dotnet build Editor/StatusBarEditor.csproj -c Release` → `Editor/bin/Release/net9.0-windows/StatusBarEditor.exe`
-- 실행: VS에서 `StatusBarEditor.sln` 열어 실행, 또는 빌드된 `StatusBarEditor.exe` 직접 실행
-- VS IDE: `Editor/StatusBarEditor.csproj`를 열면 XAML 디자이너 활성화
-- 요구사항: .NET 9 SDK (사용자 환경에 이미 설치됨)
+- 요구: VS 2022 **v143**, WebView2 SDK(NuGet `microsoft.web.webview2`, 정적 `WebView2LoaderStatic.lib`), WebView2 런타임
+- `MSBuild ClaudeCodeStudio.sln /p:Configuration=Release /p:Platform=x64`
+- MSVC 한글 리터럴 → **`/utf-8` 필수**. 산출물: `bin/Release/`
+- 실행 검증: 격리 데스크톱(`CreateDesktop` + `STARTUPINFO.lpDesktop`) + `PrintWindow`(flag 2) 캡처 — 활성 세션/포그라운드 무간섭
 
-## 동작 방식
+## 모듈 아키텍처
 
-1. Claude Code가 매 stdin마다 `StatusLine.ps1`을 실행하면서 세션 정보 JSON을 표준입력으로 전달
-2. `StatusLine.ps1`이 stdin을 파싱해 `$ctx` 전역으로 보관 → `config.json`의 `rows`를 순회하며 항목별 렌더링
-3. 줄(row) 단위로 `Write-Output`하므로 출력된 각 라인이 statusLine의 한 줄이 된다
+- **로딩**: `Core/src/modules.cpp` 의 `kModuleDlls[]` 에 dll 명을 하드코딩 → 시작 시 `LoadLibrary` + `GetProcAddress` 로 `Module_*` 바인딩 (D11 "암시적" = 목록 하드코딩).
+- **메시지 흐름**:
+  - iframe(모듈 web) → `window.parent.postMessage({module,cmd,arg})` → Core 셸이 `chrome.webview.postMessage(JSON)` → C++
+  - C++ `WebMessageReceived` → `Router_Handle` → `module` 로 모듈 조회 → `Module_Handle(json)` (cmd/arg 해석은 모듈 몫)
+  - 모듈이 `post` 콜백 호출 → Core 가 `{module,payload}` **봉투**로 씌워 회신 → Core 셸이 `env.module` iframe 에 payload 중계
+- 새 모듈 추가: dll 프로젝트(`MODULE_EXPORTS` + `$(SolutionDir)shared` include) + `Module_*` 구현 + `kModuleDlls` 등록 + Core 셸 `index.html` 에 탭/iframe(`frames` 맵).
 
-편집기는 같은 `config.json`을 읽고 쓰므로, 편집기에서 "저장 & 적용"하면 다음 Claude Code 호출부터 반영됨.
+## StatusLine.ps1 런타임
 
-## stdin JSON 주요 필드
+1. Claude Code 가 매 stdin 마다 `StatusLine.ps1` 실행, 세션 JSON 전달.
+2. stdin 파싱 → `$ctx` → `config.json` 의 `rows` 순회 렌더링. 줄 단위 `Write-Output` → 각 라인이 statusLine 한 줄.
 
-`.last_input.json`을 참고하면 실제 형태를 확인할 수 있다. 주요 경로:
-
-- `model.id`, `model.display_name`, `version`, `session_id`
-- `workspace.current_dir`, `workspace.project_dir`
-- `context_window.context_window_size`, `context_window.used_percentage`
-- `cost.total_cost_usd`, `cost.total_duration_ms`
-- `effort.level`
-- `rate_limits.five_hour.used_percentage`, `rate_limits.seven_day.used_percentage`
-- `transcript_path`
-
-필드 접근은 `Get-Field`(문자열, 기본값) 또는 `Get-FieldRaw`(raw 값, null 가능) 헬퍼를 사용한다.
+**stdin JSON 주요 필드** (`.last_input.json` 참고): `model.id`, `model.display_name`, `version`, `session_id`, `workspace.current_dir/project_dir`, `context_window.*`, `cost.total_cost_usd/total_duration_ms`, `effort.level`, `rate_limits.five_hour/seven_day.used_percentage`, `transcript_path`. 접근은 `Get-Field`(문자열, 기본값)/`Get-FieldRaw`(raw, null 가능).
 
 ## 항목 추가/수정 절차
 
-새 항목 타입을 추가할 때는 **두 곳을 동시에** 수정한다:
+새 항목 타입은 **두 곳** 동시 수정:
+1. **`StatusLine.ps1`** — `# ----- Render -----` 의 `switch ($it.type)` 에 case 추가 (런타임 렌더링).
+2. **`ClaudeCodeStatusBar/web/app.js`** — `CATALOG` 배열에 `{key,name,ex,cat}` 추가 (편집기 팔레트).
 
-1. **`StatusLine.ps1`** — `# ----- Render -----` 섹션의 `switch ($it.type)`에 case 추가 (런타임 렌더링)
-2. **`Editor/Models/ItemCatalog.cs`** — `All` 배열에 `ItemTypeInfo` 추가 (편집기 팔레트)
-
-`Category`는 GUI 팔레트의 탭 분류: `Claude`, `워크스페이스`, `Git`, `시간`, `시스템`, `사용률`, `아이콘`, `구분자/포맷` (마지막 카테고리는 항상 노출되는 고정 영역).
-
-값이 null일 때 `?` 같은 placeholder 대신 `0` 또는 빈 문자열을 쓰는 게 기존 패턴 (예: `ctx_pct`, `ctx_bar`).
+`cat`(카테고리): `Claude`, `워크스페이스`, `Git`, `시간`, `시스템`, `사용률`, `아이콘`, `구분자/포맷`.
+값 null 시 `?` 같은 placeholder 대신 `0`/빈 문자열 (기존 패턴, 예: `ctx_pct`, `ctx_bar`).
 
 ## 아이콘 시스템
 
-`icon_*` 타입은 같은 카테고리 항목들을 한 줄에 묶을 때 사용하는 독립 항목이다.
-한 줄에 `ctx_bar`와 `ctx_pct`를 같이 쓸 때 아이콘은 `icon_ctx` 하나만 두면 된다.
-
-- `StatusLine.ps1`의 `$script:Icons` 해시테이블에 `<key> → 글리프` 매핑 정의
-- `switch`에서 `{ $_ -like 'icon_*' }` 케이스가 키를 잘라내 매핑 조회 후 출력
-- 새 아이콘 추가 시: `$script:Icons`에 키/글리프 추가 + `ItemCatalog.All`에 `icon_<key>` 항목 등록 (Category = "아이콘")
-
-기본 글리프는 이모지를 사용한다 (폰트 의존성 없음). Nerd Font 글리프로 바꾸려면 `$script:Icons`만 교체하면 된다.
+`icon_*` 는 같은 카테고리 항목을 한 줄에 묶을 때 쓰는 독립 항목 (예: `ctx_bar`+`ctx_pct` 줄에 `icon_ctx` 하나).
+- `StatusLine.ps1` 의 `$script:Icons` 해시테이블에 `<key> → 글리프` 매핑.
+- `switch` 의 `{ $_ -like 'icon_*' }` 케이스가 키 잘라 조회 후 출력.
+- 새 아이콘: `$script:Icons` 추가 + `app.js` `CATALOG` 에 `icon_<key>`(cat="아이콘").
+- 기본 글리프는 이모지 (폰트 의존 없음). Nerd Font 로 바꾸려면 `$script:Icons` 만 교체.
 
 ### VS16 (Variation Selector-16, U+FE0F)
 
-Unicode 이모지는 두 종류로 갈린다:
+- **emoji_presentation = Yes**: 그냥 2칸 컬러 이모지 (🤖 🧠 📁).
+- **= No**: 1칸 흑백 글리프 → 뒤에 `U+FE0F` 붙여 2칸 강제 (`'⏱'` → `'⏱️'`).
+- 새 아이콘 추가 시 Unicode 공식 `Emoji_Presentation` 확인, `No` 면 VS16 부착. 현재 적용: `version`, `duration`, `host`, `h5`, `week`.
 
-- **emoji_presentation = Yes**: 그냥 써도 2칸 폭 컬러 이모지로 렌더링 (예: 🤖 🧠 📁)
-- **emoji_presentation = No**: 그냥 쓰면 1칸 폭 흑백 텍스트 글리프로 렌더링됨. 옆에 공백을 줘도 다음 문자와 시각적으로 붙어 보임 (예: ⏱ 🗓 🖥 🏷)
+## statusLine 적용
 
-후자 그룹은 글리프 뒤에 `U+FE0F`(VS16)를 붙여 2칸 폭 이모지로 강제해야 한다. 예: `'⏱'` → `'⏱️'`.
+**상태바 설정** 탭 **"저장 & 적용"**:
+1. `config.json` 저장 (`statusbar.cpp` `CmdApply`).
+2. `~/.claude/settings.json` 의 `statusLine` 을 `powershell -NoProfile -ExecutionPolicy Bypass -File <StatusLine.ps1>` 로 갱신 — **다른 필드 보존**(미니 JSON 파서로 statusLine 객체만 교체).
 
-새 아이콘을 추가할 때는 Unicode 공식 emoji-data.txt의 `Emoji_Presentation` 속성을 확인하고, `No`라면 VS16을 함께 붙여야 statusLine에서 일정한 간격을 유지한다.
-
-현재 VS16이 적용된 키: `version`, `duration`, `host`, `h5`, `week`.
-
-## 설치/적용
-
-편집기에서 **"저장 & 적용"** 버튼을 누르면:
-
-1. `config.json`에 레이아웃 저장 (`ConfigStore.Save`)
-2. `~/.claude/settings.json`의 `statusLine`을 `powershell -NoProfile -ExecutionPolicy Bypass -File <StatusLine.ps1>` 으로 갱신 (`SettingsApplier.Apply`)
-
-수동 적용 시에도 동일한 `statusLine` 객체를 `~/.claude/settings.json`에 넣어주면 된다.
+수동 적용 시에도 동일한 `statusLine` 객체를 넣으면 된다.
 
 ## 디자인 제약
 
-- **Windows 전용**: PowerShell 5+ 런타임, .NET 9 WPF 편집기
-- **외부 의존성 없음**: .NET 표준 라이브러리만 사용 (NuGet 패키지 0개)
-- **에러는 조용히**: `StatusLine.ps1`은 `$ErrorActionPreference = 'SilentlyContinue'` + try/catch로 감싸 statusLine이 깨지지 않도록 함
-- **출력 인코딩 UTF-8** 고정 (한글/이모지 깨짐 방지)
-- **`config.json` 포맷 호환**: PowerShell이 읽던 형태를 그대로 유지 (`rows` → `[{type, value?}]`). System.Text.Json `JsonPropertyName`으로 소문자 매핑
+- **Windows 전용**: PowerShell 5+ 런타임, C++/WebView2 앱.
+- **모듈 경계 = C 문자열(JSON)**: STL 을 DLL 경계로 넘기지 않음 (ABI 안전 + 플러그인 친화).
+- **에러는 조용히**: `StatusLine.ps1` 은 `$ErrorActionPreference='SilentlyContinue'` + try/catch 로 statusLine 이 깨지지 않게.
+- **출력 인코딩 UTF-8** 고정 (한글/이모지 깨짐 방지).
+- **config.json 포맷 호환**: `rows` → `[{type, value?}]` 유지.
 
 ## Git 규칙
 
-- **main 직접 커밋 금지**: 모든 변경은 feature 브랜치(`feature/<주제>`)에서 작업한다.
-- 반영 흐름: feature 브랜치 커밋 → push → PR 생성 → main으로 **스쿼시 머지**. main에는 스쿼시 머지로만 반영한다 (`gh pr merge --squash`).
-- 저장소 설정에서 merge commit / rebase 머지는 비활성화되어 있다 (스쿼시만 허용).
+- **main 직접 커밋 금지**: 모든 변경은 feature 브랜치(`feature/<주제>`)에서 작업.
+- 반영 흐름: feature 브랜치 커밋 → push → PR → main **스쿼시 머지**(`gh pr merge --squash`). merge commit / rebase 머지 비활성 (스쿼시만).

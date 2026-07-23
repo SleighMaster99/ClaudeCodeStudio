@@ -1,74 +1,60 @@
-# Claude Code StatusBar
+# ClaudeCodeStudio
 
-Claude Code 하단 `statusLine`을 멀티라인으로 커스터마이징하는 Windows용 도구.
-PowerShell 런타임 + C# WPF GUI 편집기로 구성되어 있다.
+Claude Code 설정을 관리하는 Windows용 통합 데스크톱 앱. **C++ + WebView2** 로 만들어졌으며,
+좌측 탭으로 두 기능을 제공한다:
 
-## 구성
+- **설정 동기화** — 글로벌 `~/.claude` 설정을 git 으로 서버와 동기화 (초기 설정 포함)
+- **상태바 설정** — statusLine 레이아웃(`config.json`)을 시각적으로 편집
 
-| 파일 | 역할 |
-| --- | --- |
-| `StatusLine.ps1` | statusLine 런타임. stdin JSON을 받아 `config.json` 레이아웃으로 출력 |
-| `Editor/` | C# WPF GUI 편집기 (드래그&드롭 레이아웃 편집) |
-| `config.json` | 레이아웃 정의 (`rows` → 각 줄의 항목 배열) |
-| `usage_config.json` | 플랜별 5시간/주간 한도 (pro / max5x / max20x) |
+statusLine 렌더링은 PowerShell 런타임(`StatusLine.ps1`)이 그대로 담당한다 — 앱은 번들 + 설정만 관리.
+
+## 구조
+
+| 프로젝트 | 종류 | 역할 |
+| --- | --- | --- |
+| `ClaudeCodeStudio` | exe | 최소 부트스트래퍼 → `Core_Run` 호출 |
+| `Core` | dll | 창 + WebView2 호스트 + 좌측 탭 셸 + 모듈 로더/라우터 |
+| `SyncClaudeCodeSetting` | dll | 설정 동기화 모듈 (git status/log/pull/push + 초기 설정) |
+| `ClaudeCodeStatusBar` | dll | 상태바 설정 모듈 (config.json 편집 + settings.json 적용) |
+| `StatusLine.ps1` | ps1 | statusLine 런타임 (Claude Code 가 매 stdin 호출) |
+
+각 기능 모듈은 `shared/module_api.h` 의 C 계약(`Module_Info/Init/Handle`)을 export 하고,
+자기 web UI(HTML/JS)를 iframe 으로 소유한다. 경계는 C 문자열(JSON)뿐이라 ABI 안전 + 플러그인 친화.
+
+## 빌드
+
+- 요구: VS 2022 (v143 툴셋), WebView2 SDK(NuGet), WebView2 런타임
+- ```powershell
+  MSBuild ClaudeCodeStudio.sln /p:Configuration=Release /p:Platform=x64
+  ```
+- 산출물: `bin/Release/` 에 `ClaudeCodeStudio.exe` + DLL 3개 + `web/`
 
 ## 요구 사항
 
 - Windows 10/11
-- PowerShell 5+ (기본 내장)
-- .NET 9 SDK — GUI 편집기 빌드용
+- PowerShell 5+ (statusLine 런타임)
+- Microsoft Edge WebView2 런타임
+- git (설정 동기화 + `git_*` 항목)
 - [Claude Code CLI](https://docs.claude.com/en/docs/claude-code)
-- (선택) `git` — `git_user`, `git_branch` 항목을 쓰려면 필요
 
-## 설치
+## statusLine 적용
 
-1. 원하는 위치에 clone:
-   ```powershell
-   git clone https://github.com/SleighMaster99/ClaudeCodeStatusBar.git
-   cd ClaudeCodeStatusBar
-   ```
-2. GUI 편집기 빌드 & 실행:
-   ```powershell
-   dotnet build Editor/StatusBarEditor.csproj -c Release
-   & "Editor/bin/Release/net9.0-windows/StatusBarEditor.exe"
-   ```
-3. 레이아웃 조정 후 **"저장 & 적용"** 버튼 클릭
+**상태바 설정** 탭에서 레이아웃 편집 후 **"저장 & 적용"** → `config.json` 저장 +
+`~/.claude/settings.json` 의 `statusLine` 을 `StatusLine.ps1` 경로로 갱신.
 
-"저장 & 적용"은 다음 두 가지를 수행한다:
-
-1. `config.json`에 레이아웃 저장
-2. `~/.claude/settings.json`의 `statusLine`을 이 폴더의 `StatusLine.ps1`을 실행하도록 갱신
-
-## 수동 적용
-
-GUI를 쓰지 않고 직접 `~/.claude/settings.json`에 추가해도 된다:
-
+수동 적용:
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"D:\\path\\to\\ClaudeCodeStatusBar\\StatusLine.ps1\""
+    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"...\\StatusLine.ps1\""
   }
 }
 ```
 
-## 지원 항목
-
-GUI 팔레트의 카테고리별로:
-
-- **Claude**: `model`, `version`, `effort`, `ctx_size`, `ctx_bar`, `ctx_pct`, `cost`, `duration`, `session_id`, `transcript`
-- **워크스페이스**: `project_dir`, `current_dir`
-- **Git**: `git_branch`, `git_user`
-- **시간**: `time`, `date`
-- **시스템**: `host`, `user`
-- **사용률**: `h5_bar`, `h5_pct`, `week_bar`, `week_pct` — `~/.claude/projects/**/*.jsonl`을 60초 캐시로 집계
-- **아이콘**: `icon_*` (같은 줄 내 아이콘은 하나로 묶을 때 사용)
-- **구분자/포맷**: `space`, `sep_pipe`, `sep_slash`, `newline`
-
 ## 사용률 한도 조정
 
-`usage_config.json`을 본인 플랜에 맞게 수정:
-
+`usage_config.json` 을 본인 플랜에 맞게 (값은 USD/API 환산 기준):
 ```json
 {
   "pro":    { "5h":  35, "week":  245 },
@@ -77,14 +63,9 @@ GUI 팔레트의 카테고리별로:
 }
 ```
 
-값은 USD(API 환산) 기준이다.
+## 계획 문서
 
-## 디자인 제약
-
-- **Windows 전용** (PowerShell + WPF)
-- **외부 의존성 없음** — .NET 표준, git, claude CLI만 사용
-- **에러는 조용히** — statusLine이 깨지지 않도록 모든 항목이 try/catch로 감싸져 있음
-- **출력 인코딩 UTF-8** 고정 (한글/이모지 깨짐 방지)
+통합 계획·결정 로그·단계(P0~P5)는 `docs/ClaudeCodeStudio-Integration-Plan.md` 가 SSOT.
 
 ## 라이선스
 
