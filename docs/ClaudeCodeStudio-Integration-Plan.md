@@ -317,3 +317,20 @@ extern "C" {
   - `statusLine` 은 사용자명 무관(`D:\Repo\...`) — §13 에서 별도 처리.
 - 동기화 앱 **프로토타입**(C++/WebView2, 네이티브 VS 솔루션) 빌드·실행 검증 완료 — 위치: `~/.claude/SyncClaudeCodeSetting` (→ 본 repo 로 이동 예정).
 - NSIS 인스톨러 프로토타입(`SyncClaudeCodeSetup.exe`) 빌드 완료 (→ `ClaudeCodeStudio.nsi` 로 통합 예정).
+
+---
+
+## 18. 구현 반영 (P0~P5 완료 후, 실측·계약에 따른 조정)
+
+계획 대비 다음이 실측/계약에 따라 조정됐다. 원본 결정(의도)은 위 섹션 그대로 두고, 실제 구현 결과를 여기 기록한다.
+
+- **D10 statusLine 이식성** — `$LOCALAPPDATA` 환경변수 대신 **`~` 기반 forward-slash 경로**로 확정.
+  P5 실측 결과 Git Bash 는 statusLine command 에서 `~` 를 각 PC home 으로 확장함(공식 문서 확인)하나, 임의 환경변수(`$LOCALAPPDATA`/`%LOCALAPPDATA%`) 확장은 문서에 없어 `~` 를 채택. 목표(PC 공통 문자열 + 각 PC 해석)는 동일 달성.
+  → 설치본 기준 `powershell -NoProfile -ExecutionPolicy Bypass -File ~/AppData/Local/Programs/ClaudeCodeStudio/StatusLine.ps1` (개발 위치면 절대경로 fallback).
+- **D11 모듈 로딩** — "빌드 링크" 대신 **`LoadLibrary` + `GetProcAddress`**(하드코딩 목록 `kModuleDlls`).
+  §6 계약이 모듈마다 동일 함수명(`Module_*`)이라 암시적 링크는 심볼 충돌 → 런타임 로드로 구현. "암시적"의 의미(로드할 dll 목록을 코드에 하드코딩)는 유지. 향후 `modules/` 폴더 스캔으로 전환 용이.
+- **§5 / §12-6 `runtime/` 폴더** — 별도 폴더로 이동하지 않고 **repo 루트에 유지**(StatusLine.ps1, config.json, usage_config.json).
+  StatusLine.ps1 은 `$PSScriptRoot` 로 config 를 찾고, StatusBar 모듈은 **자기 dll 위치 기준**으로 StatusLine.ps1 을 상위 탐색하므로 폴더 분리가 불필요. 인스톨러는 exe 옆에 함께 배치.
+- **§12-5 Editor/ 제거** — C# WPF 편집기 소스/tracked 제거 + 물리 폴더(빌드산출물)까지 삭제 완료.
+
+> 결과: Phase P0~P5 전부 완료·검증. 남은 미확인(환경변수 셸 확장)은 `~` 채택으로 닫힘.
