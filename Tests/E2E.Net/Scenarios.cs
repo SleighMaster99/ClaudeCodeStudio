@@ -59,6 +59,9 @@ public class Scenarios
 
         var palette = app.WaitForSelector(".palette", 5000);
         var splitter = app.Driver.FindElement(By.Id("splitter"));
+        // 가로 조절 커서(col-resize)가 적용됐는지 확인
+        var cursor = (string)app.Js.ExecuteScript("return getComputedStyle(arguments[0]).cursor;", splitter);
+        Assert.AreEqual("col-resize", cursor, "splitter cursor=col-resize");
         int before = palette.Size.Width;
 
         // splitter 를 오른쪽으로 드래그 → 팔레트가 넓어짐

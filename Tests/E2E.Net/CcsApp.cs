@@ -16,6 +16,7 @@ public sealed class CcsApp : IDisposable
     private readonly string? _tempClaudeDir;
     public EdgeDriver Driver { get; }
     public int Port { get; }
+    public IJavaScriptExecutor Js => (IJavaScriptExecutor)Driver;
 
     private CcsApp(Process proc, EdgeDriver driver, int port, string? tempClaudeDir)
     {

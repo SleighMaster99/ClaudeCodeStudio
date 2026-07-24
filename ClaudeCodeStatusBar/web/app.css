@@ -40,8 +40,11 @@ body {
 .main { flex: 1; display: flex; min-height: 0; }
 
 /* 팔레트 ↔ 레이아웃 너비 조절 손잡이 */
-.splitter { flex: 0 0 6px; cursor: col-resize; background: #e2e5ea; }
-.splitter:hover, .splitter.dragging { background: #3b6ef5; }
+.splitter {
+  flex: 0 0 8px; cursor: col-resize;
+  background: #DCE0DA; transition: background .12s;
+}
+.splitter:hover, .splitter.dragging { background: #b8bcc2; }
 
 /* 팔레트 — 칩에 이름 + 예시값 + 설명 */
 .palette { flex: 0 0 250px; border-right: 1px solid #e2e5ea; background: #fafbfc; overflow-y: auto; }
