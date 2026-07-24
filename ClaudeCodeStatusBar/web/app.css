@@ -41,8 +41,13 @@ body {
 
 /* 팔레트 ↔ 레이아웃 너비 조절 손잡이 */
 .splitter {
+  position: relative;
   flex: 0 0 8px; cursor: col-resize;
   background: #DCE0DA; transition: background .12s;
+}
+/* hover/드래그 hit 영역을 좌우로 넓혀 얇은 손잡이에서도 col-resize 커서가 잡히게 */
+.splitter::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -5px; right: -5px; cursor: col-resize;
 }
 .splitter:hover, .splitter.dragging { background: #b8bcc2; }
 

@@ -105,8 +105,8 @@ function renderLog(m) {
     desc.textContent = it.subject || "";
     const isHead = it.hash === m.head;
     const isRemote = it.hash === m.remote;
-    if (isRemote && !isHead) desc.appendChild(makeTag("서버 최신", "tag-remote"));
-    if (isHead) desc.appendChild(makeTag("현재", "tag-current"));
+    if (isHead) desc.appendChild(makeTag("현재 PC", "tag-current"));
+    if (isRemote) desc.appendChild(makeTag("서버", "tag-remote"));
 
     const hash = document.createElement("span");
     hash.className = "hist-hash";
