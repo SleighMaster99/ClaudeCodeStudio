@@ -52,10 +52,10 @@ body {
 .toast.ok  { background:var(--good-bg); border-color:var(--good-line); color:var(--good); }
 .toast.err { background:var(--crit-bg); border-color:var(--crit-line); color:var(--crit); }
 
-.body { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:14px; }
+.body { flex:1; overflow:hidden; padding:16px; display:flex; flex-direction:column; gap:14px; min-height:0; }
 
 /* status */
-.status { border:1px solid var(--line2); background:var(--s2); border-radius:10px; padding:15px 16px 16px; }
+.status { border:1px solid var(--line2); background:var(--s2); border-radius:10px; padding:15px 16px 16px; flex:none; }
 .status.is-good { border-color:var(--good-line); background:var(--good-bg); }
 .status.is-warn { border-color:var(--warn-line); background:var(--warn-bg); }
 .status.is-push { border-color:var(--line2); background:var(--s2); }
@@ -104,7 +104,7 @@ body {
 @keyframes flowL { to { background-position:-14px 0; } }
 
 /* actions */
-.actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; flex:none; }
 .act { display:flex; align-items:center; gap:12px; text-align:left; padding:13px 14px;
   border-radius:10px; cursor:pointer; border:1px solid var(--line2); background:var(--win);
   color:var(--ink); font-family:var(--font-ui); transition:transform .08s, background .12s; }
@@ -124,13 +124,14 @@ body {
 .act[disabled] .act-arrow { color:var(--ink3); }
 
 /* history */
-.history { border:1px solid var(--line); border-radius:10px; background:var(--s2); overflow:hidden; }
+.history { border:1px solid var(--line); border-radius:10px; background:var(--s2); overflow:hidden;
+  flex:1; min-height:0; display:flex; flex-direction:column; }
 .hist-head { display:flex; align-items:center; justify-content:space-between; padding:11px 14px;
-  border-bottom:1px solid var(--line); }
+  border-bottom:1px solid var(--line); flex:none; }
 .sec-label { font-family:var(--font-mono); font-size:0.65625rem; font-weight:600; text-transform:uppercase;
   letter-spacing:.7px; color:var(--ink3); }
 .hist-count { font-family:var(--font-mono); font-size:0.6875rem; color:var(--ink3); }
-.hist-list { list-style:none; margin:0; padding:4px; }
+.hist-list { list-style:none; margin:0; padding:4px; flex:1; overflow-y:auto; min-height:0; }
 .hist-row { display:grid; grid-template-columns:auto 1fr auto auto; align-items:center; gap:11px;
   padding:9px 10px; border-radius:7px; }
 .hist-row + .hist-row { border-top:1px solid var(--line); }
