@@ -43,6 +43,8 @@ function renderStatus(s) {
   $("nodeRemote").textContent = s.remoteHash ? s.remoteHash : "—";
   $("nodeLocal").textContent = s.headHash ? s.headHash : "—";
   $("repoUrlFoot").textContent = s.remote || "—";
+  var ri = $("remoteUrl");
+  if (ri && document.activeElement !== ri) ri.value = s.remote || "";
 
   const behind = s.behind | 0, ahead = s.ahead | 0;
   const dirty = !s.clean;
@@ -159,6 +161,10 @@ window.addEventListener("message", (e) => {
 $("pullBtn").addEventListener("click", () => { if (!$("pullBtn").disabled) send("pull"); });
 $("pushBtn").addEventListener("click", () => { if (!$("pushBtn").disabled) send("push"); });
 $("refreshBtn").addEventListener("click", () => send("refresh"));
+$("remoteSave").addEventListener("click", () => {
+  const u = $("remoteUrl").value.trim();
+  if (u) send("setRemote", u);
+});
 
 $("setupBtn").addEventListener("click", function () {
   const url = $("repoUrl").value.trim();

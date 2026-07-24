@@ -261,6 +261,21 @@ static void CmdRevert(const std::string& hash) {
     Result(false, "되돌리기는 다음 버전에서 구현됩니다", "hash=" + hash);
 }
 
+// 서버 주소(origin URL) 변경. 이미 설정된 저장소의 remote 를 교체한다.
+static void CmdSetRemote(const std::string& url) {
+    std::string u = Trim(url);
+    if (u.empty())      { Result(false, "서버 주소가 비어 있습니다", ""); return; }
+    if (!IsConfigured()){ Result(false, "먼저 초기 설정이 필요합니다", ""); CmdStatus(); return; }
+    std::string tmp;
+    DWORD code = (Git(L"remote get-url origin", tmp) == 0)
+        ? Git(L"remote set-url origin " + Widen(u), tmp)
+        : Git(L"remote add origin "     + Widen(u), tmp);
+    if (code != 0) { Result(false, "서버 주소 변경 실패", Trim(tmp)); CmdStatus(); return; }
+    Result(true, "서버 주소를 변경했습니다", u);
+    CmdStatus();
+    CmdLog();
+}
+
 // 화이트리스트 항목이 있으면 .sync-backup-<시각>/ 으로 복사 (reset --hard 이전 안전망).
 static void BackupExisting() {
     const wchar_t* items[] = { L"settings.json", L"CLAUDE.md", L"commands", L"hooks", L"output-styles" };
@@ -318,6 +333,7 @@ MODULE_API void Module_Handle(const char* reqJson) {
     else if (cmd == "pull")      CmdPull();
     else if (cmd == "push")      CmdPush();
     else if (cmd == "revert")    CmdRevert(arg);
+    else if (cmd == "setRemote") CmdSetRemote(arg);
     else if (cmd == "bootstrap") CmdBootstrap(arg);
     else                         Result(false, "알 수 없는 명령", cmd);
 }
