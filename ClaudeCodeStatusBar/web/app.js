@@ -150,8 +150,17 @@ function renderPalette() {
     var items = CATALOG.filter(function (c) { return c.cat === cat; });
     if (!items.length) return;
     var grp = document.createElement("div"); grp.className = "pal-group";
-    var h = document.createElement("div"); h.className = "pal-cat"; h.textContent = cat;
+
+    // 카테고리 헤더 — 클릭 시 접기/펼치기 토글
+    var h = document.createElement("button"); h.className = "pal-cat"; h.type = "button";
+    var arrow = document.createElement("span"); arrow.className = "pal-arrow"; arrow.textContent = "▾";
+    var label = document.createElement("span"); label.className = "pal-cat-label"; label.textContent = cat;
+    var count = document.createElement("span"); count.className = "pal-count"; count.textContent = "(" + items.length + ")";
+    h.append(arrow, label, count);
+    h.addEventListener("click", function () { grp.classList.toggle("collapsed"); });
     grp.appendChild(h);
+
+    var itemsEl = document.createElement("div"); itemsEl.className = "pal-items";
     items.forEach(function (c) {
       var chip = document.createElement("div");
       chip.className = "pal-chip" + (c.cat === "아이콘" ? " is-icon" : "");
@@ -164,8 +173,9 @@ function renderPalette() {
       chip.addEventListener("dragstart", function (e) {
         e.dataTransfer.setData("text/plain", JSON.stringify({ src: "palette", type: c.key }));
       });
-      grp.appendChild(chip);
+      itemsEl.appendChild(chip);
     });
+    grp.appendChild(itemsEl);
     body.appendChild(grp);
   });
 }
