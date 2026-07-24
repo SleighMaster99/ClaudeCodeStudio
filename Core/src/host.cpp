@@ -145,7 +145,7 @@ extern "C" CORE_API int Core_Run(HINSTANCE hInst, int nCmdShow) {
     RegisterClassExW(&wc);
 
     g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"ClaudeCodeStudio",
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 720,
+        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1920, 1080,
         nullptr, nullptr, hInst, nullptr);
     ShowWindow(g_hwnd, nCmdShow);
     UpdateWindow(g_hwnd);
