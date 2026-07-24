@@ -6,6 +6,7 @@
 #include <wrl.h>
 #include <wrl/event.h>
 #include <WebView2.h>
+#include <WebView2EnvironmentOptions.h>
 
 #include <string>
 #include <filesystem>
@@ -113,8 +114,15 @@ void Host_PostToUi(const char* json) {
 
 static void InitWebView() {
     std::wstring userData = EnvVar(L"LOCALAPPDATA") + L"\\ClaudeCodeStudio\\WebView2";
+
+    // 가상 호스트 이름(claudecodestudio.local)을 로컬로 즉시 해석시킨다.
+    // WebView2 가 이 이름을 DNS/mDNS 로 조회하려다 콜드 스타트가 지연되는 것을 예방(가상 호스트라 실제 통신은 없음).
+    auto envOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+    envOptions->put_AdditionalBrowserArguments(
+        L"--host-resolver-rules=\"MAP claudecodestudio.local 127.0.0.1\"");
+
     HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
-        nullptr, userData.c_str(), nullptr,
+        nullptr, userData.c_str(), envOptions.Get(),
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [](HRESULT r, ICoreWebView2Environment* env) -> HRESULT {
                 if (FAILED(r) || !env) {
