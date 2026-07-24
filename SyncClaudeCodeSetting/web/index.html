@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설정 동기화 — Claude Code</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="win">
+  <header class="titlebar">
+    <div class="tb-id">
+      <span class="tb-mark">◒</span>
+      <span class="tb-name">설정 동기화</span>
+      <span class="tb-path">~/.claude</span>
+    </div>
+    <div class="tb-controls">
+      <button id="refreshBtn" class="tb-btn" title="원격에서 새로고침 (fetch)">⟳</button>
+      <button id="themeBtn" class="tb-btn" title="테마 전환">◐</button>
+    </div>
+  </header>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- 초기 설정 (미설정 감지 시에만 노출) -->
+  <section id="setup" class="setup" hidden>
+    <div class="setup-box">
+      <div class="setup-mark">◒</div>
+      <h1 class="setup-title">초기 설정</h1>
+      <p class="setup-desc">이 PC 의 <code>~/.claude</code> 설정을 서버와 동기화하도록 준비합니다.</p>
+      <label class="setup-label">저장소 URL</label>
+      <input id="repoUrl" class="setup-input" type="text"
+             value="https://github.com/SleighMaster99/claude-code-settings.git">
+      <button id="setupBtn" class="setup-go">초기 설정 시작</button>
+      <p class="setup-note">기존 설정은 <code>.sync-backup</code> 에 백업된 뒤 서버 설정으로 정렬됩니다.</p>
+    </div>
+  </section>
+
+  <div class="body">
+    <section class="remote-cfg">
+      <span class="sec-label">서버 주소</span>
+      <div class="remote-row">
+        <input id="remoteUrl" class="remote-input" type="text" placeholder="https://…git" spellcheck="false" autocomplete="off">
+        <button id="remoteSave" class="remote-btn">변경</button>
+      </div>
+    </section>
+    <section id="status" class="status is-idle">
+      <div class="status-head">
+        <span class="dot"></span>
+        <div>
+          <h1 id="statusTitle" class="status-title">상태 확인 중…</h1>
+          <p id="statusSub" class="status-sub">저장소를 읽는 중입니다.</p>
+        </div>
+        <span id="statusBadge" class="status-badge" hidden></span>
+      </div>
+      <div id="wire" class="wire dir-none">
+        <div class="node">
+          <span class="node-ico">☁</span>
+          <span class="node-name">서버</span>
+          <span id="nodeRemote" class="node-meta">github</span>
+        </div>
+        <div class="wire-track"><span id="wireLabel" class="wire-label"></span></div>
+        <div class="node node-local">
+          <span class="node-ico">▣</span>
+          <span class="node-name">이 PC</span>
+          <span id="nodeLocal" class="node-meta">local</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="pullBtn" class="act" disabled>
+        <span class="act-arrow">↓</span>
+        <span class="act-text"><b>서버 → 이 PC 적용</b><small id="pullSub">변경 없음</small></span>
+        <span id="pullBadge" class="act-badge" hidden></span>
+      </button>
+      <button id="pushBtn" class="act" disabled>
+        <span class="act-arrow">↑</span>
+        <span class="act-text"><b>이 PC → 서버 반영</b><small id="pushSub">변경 없음</small></span>
+        <span id="pushBadge" class="act-badge" hidden></span>
+      </button>
+    </section>
+
+    <section class="history">
+      <div class="hist-head">
+        <span class="sec-label">변경 이력</span>
+        <span id="histCount" class="hist-count"></span>
+      </div>
+      <ol id="histList" class="hist-list"></ol>
+    </section>
+  </div>
+
+  <footer class="statusbar">
+    <span id="conn" class="conn"><span class="conn-dot"></span>연결됨</span>
+    <span class="sb-sep">·</span>
+    <span id="repoUrlFoot" class="sb-repo">—</span>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

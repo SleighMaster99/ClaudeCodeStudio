@@ -1,0 +1,114 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #f4f5f7; color: #1c221e; overflow: hidden;
+}
+.editor { height: 100vh; display: flex; flex-direction: column; }
+
+.toolbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; background: #fff; border-bottom: 1px solid #e2e5ea; flex: none;
+}
+.title { font-weight: 600; font-size: 0.875rem; }
+.tools { margin-left: auto; display: flex; gap: 8px; }
+.btn {
+  border: 1px solid #cdd2d9; background: #fff; color: #333;
+  padding: 6px 12px; border-radius: 6px; font-size: 0.8125rem; cursor: pointer;
+}
+.btn:hover { background: #f0f1f3; }
+.btn.primary { background: #3b6ef5; border-color: #3b6ef5; color: #fff; }
+.btn.primary:hover { background: #2f5ed6; }
+
+.toast {
+  margin: 8px 14px -2px; padding: 8px 12px; border-radius: 6px; font-size: 0.8125rem;
+  border: 1px solid #cdd2d9; background: #eef0f3;
+}
+.toast.ok  { background: #e4f1e9; border-color: #bfe0cc; color: #2f7d51; }
+.toast.err { background: #f7e0db; border-color: #e7b6ac; color: #b0392c; }
+
+/* 미리보기 (실제 statusLine 모양) */
+.preview-box { margin: 8px 14px 0; border: 1px solid #cdd2d9; border-radius: 8px; background: #fff; flex: none; }
+.preview-head { padding: 6px 12px; font-size: 0.6875rem; color: #8a928b; border-bottom: 1px solid #eef0f3; }
+.preview {
+  padding: 10px 12px; margin: 0;
+  font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
+  font-size: 0.8125rem; line-height: 1.55; color: #333;
+  white-space: pre; overflow-x: auto; max-height: 120px; overflow-y: auto;
+}
+
+.main { flex: 1; display: flex; min-height: 0; }
+
+/* 팔레트 ↔ 레이아웃 너비 조절 손잡이 */
+.splitter {
+  position: relative;
+  flex: 0 0 8px; cursor: ew-resize;
+  background: #DCE0DA; transition: background .12s;
+}
+/* hover/드래그 hit 영역을 좌우로 넓혀 얇은 손잡이에서도 ew-resize 커서가 잡히게.
+   ew-resize(↔)는 Windows 시스템 커서(IDC_SIZEWE)라 사용자 커스텀 포인터 테마가 반영된다.
+   col-resize 는 WebView2(Chromium)가 자체 번들 커서로 그려 테마가 무시되므로 쓰지 않는다. */
+.splitter::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -5px; right: -5px; cursor: ew-resize;
+}
+.splitter:hover, .splitter.dragging { background: #b8bcc2; }
+
+/* 팔레트 — 칩에 이름 + 예시값 + 설명 */
+.palette { flex: 0 0 250px; border-right: 1px solid #e2e5ea; background: #fafbfc; overflow-y: auto; }
+.palette-head {
+  padding: 10px 12px; font-size: 0.71875rem; font-weight: 600; color: #8a928b;
+  position: sticky; top: 0; background: #fafbfc; border-bottom: 1px solid #eef0f3;
+}
+.pal-group { padding: 2px 8px 6px; }
+.pal-cat {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  border: 0; background: transparent; cursor: pointer; text-align: left;
+  padding: 7px 4px 5px; font-size: 0.6875rem; font-weight: 600; color: #8a928b;
+  border-radius: 5px;
+}
+.pal-cat:hover { color: #333; background: #eef0f3; }
+.pal-arrow { font-size: 0.5625rem; color: #a3a8af; display: inline-block; transition: transform .15s; }
+.pal-group.collapsed .pal-arrow { transform: rotate(-90deg); }
+.pal-count { margin-left: auto; color: #b3b8bf; font-weight: 400; }
+.pal-group.collapsed .pal-items { display: none; }
+.pal-chip {
+  display: inline-block; vertical-align: top; width: 108px;
+  margin: 3px; padding: 6px 8px; border: 1px solid #b8bcc2; border-radius: 6px; cursor: grab;
+}
+.pal-chip:hover { border-color: #3b6ef5; }
+.chip-name { font-weight: 600; font-size: 0.75rem; line-height: 1.2; }
+.chip-sample {
+  font-family: "Cascadia Code", "Consolas", monospace; font-size: 0.75rem; color: #3C5A8C;
+  margin-top: 3px; min-height: 16px; overflow: hidden; white-space: nowrap;
+}
+.pal-chip.is-icon .chip-sample { font-size: 1.25rem; }
+.chip-desc { font-size: 0.625rem; color: #7a7f86; margin-top: 3px; line-height: 1.3; }
+
+/* 캔버스 */
+.canvas { flex: 1; overflow-y: auto; padding: 14px; }
+.canvas-head { font-size: 0.75rem; color: #8a928b; margin-bottom: 10px; }
+.rows { display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; align-items: flex-start; gap: 8px; }
+.dropzone {
+  flex: 1; min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 8px; background: #fff; border: 1px dashed #cdd2d9; border-radius: 8px;
+}
+.dropzone.over { border-color: #3b6ef5; background: #eef3ff; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 6px 4px 10px; font-size: 0.75rem;
+  border: 1px solid #b8bcc2; border-radius: 6px; cursor: grab;
+}
+.chip.editable { cursor: pointer; }
+.chip.dragging { opacity: .4; }
+.chip-lab { white-space: nowrap; }
+.chip-del { border: 0; background: transparent; color: #6a6f76; cursor: pointer; font-size: 0.875rem; line-height: 1; padding: 0 2px; }
+.chip-del:hover { color: #b0392c; }
+.row-del {
+  border: 1px solid #e7c9c2; background: #fff; color: #b0392c;
+  padding: 8px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; white-space: nowrap;
+}
+.row-del:hover { background: #f7e0db; }
+.empty-hint { color: #b3b8bf; font-size: 0.75rem; padding: 2px 4px; }
+
+button:focus-visible, .pal-chip:focus-visible { outline: 2px solid #3b6ef5; outline-offset: 1px; }

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>상태바 설정</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="editor">
+  <header class="toolbar">
+    <span class="title">상태바 레이아웃</span>
+    <div class="tools">
+      <button id="addRow" class="btn">+ 줄 추가</button>
+      <button id="reloadBtn" class="btn">되돌리기</button>
+      <button id="saveBtn" class="btn">저장</button>
+      <button id="applyBtn" class="btn primary">저장 &amp; 적용</button>
+    </div>
+  </header>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <section class="preview-box">
+    <div class="preview-head">미리보기 — 실제 statusLine 모양</div>
+    <pre id="preview" class="preview">(레이아웃에 항목을 추가하세요)</pre>
+  </section>
+
+  <div class="main">
+    <aside class="palette">
+      <div class="palette-head">항목 팔레트 — 오른쪽 줄로 끌어다 놓기</div>
+      <div id="paletteBody" class="palette-body"></div>
+    </aside>
+    <div id="splitter" class="splitter" title="드래그하여 팔레트/레이아웃 너비 조절"></div>
+    <section class="canvas">
+      <div class="canvas-head">레이아웃 — 칩을 끌어 순서 변경, ×로 삭제. <b>text</b>는 더블클릭해 편집</div>
+      <div id="rows" class="rows"></div>
+    </section>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
