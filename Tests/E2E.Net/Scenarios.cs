@@ -1,8 +1,9 @@
 using OpenQA.Selenium;
+using OpenQA.Selenium.Interactions;
 
 namespace ClaudeCodeStudio.E2E;
 
-// 실제 시나리오 — 탭 전환 + 모듈 iframe 렌더 검증(구동 수단이 실제 기능 검증에 쓰임을 보임).
+// 실제 시나리오 — 탭 전환 + 모듈 iframe 렌더/조작 검증.
 [TestClass]
 [DoNotParallelize]
 public class Scenarios
@@ -45,5 +46,25 @@ public class Scenarios
         group.FindElement(By.CssSelector(".pal-cat")).Click();   // 다시 펼치기
         bool expanded = CcsApp.WaitUntil(() => items.Displayed, v => v, 3000);
         Assert.IsTrue(expanded, "다시 클릭 후 펼침");
+    }
+
+    [TestMethod]
+    public void 팔레트_레이아웃_너비_조절()
+    {
+        using var app = CcsApp.Launch();
+        app.Driver.SwitchTo().DefaultContent();
+        app.Driver.FindElement(By.CssSelector("[data-tab=statusbar]")).Click();
+        app.WaitForSelector("#pane-statusbar.active", 5000);
+        app.SwitchToModule("statusbar");
+
+        var palette = app.WaitForSelector(".palette", 5000);
+        var splitter = app.Driver.FindElement(By.Id("splitter"));
+        int before = palette.Size.Width;
+
+        // splitter 를 오른쪽으로 드래그 → 팔레트가 넓어짐
+        new Actions(app.Driver).ClickAndHold(splitter).MoveByOffset(120, 0).Release().Perform();
+
+        int after = CcsApp.WaitUntil(() => palette.Size.Width, w => w > before + 40, 3000);
+        Assert.IsTrue(after > before + 40, $"팔레트 너비 증가 ({before}→{after})");
     }
 }

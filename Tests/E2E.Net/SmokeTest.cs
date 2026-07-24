@@ -19,6 +19,8 @@ public class SmokeTest
         // sync 모듈 iframe 진입 (미설정 → '초기 설정' 화면)
         app.SwitchToModule("sync");
         var input = app.WaitForSelector("#repoUrl", 10000);
+        // 초기 설정 화면이 표시(interactable)될 때까지 대기 — status 왕복 후 setup 노출됨
+        CcsApp.WaitUntil(() => { try { return input.Displayed; } catch { return false; } }, v => v, 8000);
 
         // 키 입력 1회
         input.Clear();

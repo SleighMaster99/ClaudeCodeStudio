@@ -296,5 +296,34 @@ $("reloadBtn").addEventListener("click", function () { send("load"); });
 $("saveBtn").addEventListener("click", function () { send("save", collectConfig()); });
 $("applyBtn").addEventListener("click", function () { send("apply", collectConfig()); });
 
+// 팔레트 ↔ 레이아웃 너비 조절 (splitter 드래그)
+(function () {
+  var splitter = $("splitter");
+  var palette = document.querySelector(".palette");
+  var main = document.querySelector(".main");
+  var dragging = false;
+  splitter.addEventListener("mousedown", function (e) {
+    dragging = true;
+    splitter.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+  window.addEventListener("mousemove", function (e) {
+    if (!dragging) return;
+    var rect = main.getBoundingClientRect();
+    var w = e.clientX - rect.left;
+    w = Math.max(160, Math.min(w, rect.width - 220));   // 최소 팔레트 160, 최소 레이아웃 220
+    palette.style.flex = "0 0 " + w + "px";
+  });
+  window.addEventListener("mouseup", function () {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  });
+})();
+
 renderPalette();
 send("load");
