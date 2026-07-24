@@ -9,6 +9,7 @@
 
 #include <string>
 #include <filesystem>
+#include <set>
 
 #include "core_api.h"
 #include "core_internal.h"
@@ -51,6 +52,41 @@ static std::wstring ExeDir() {
     wchar_t buf[MAX_PATH];
     GetModuleFileNameW(nullptr, buf, MAX_PATH);
     return fs::path(buf).parent_path().wstring();
+}
+
+// ---------- system fonts ----------
+static std::wstring JsonEscapeW(const std::wstring& s) {
+    std::wstring o; o.reserve(s.size() + 2);
+    for (wchar_t c : s) {
+        if (c == L'"' || c == L'\\') { o += L'\\'; o += c; }
+        else if (c >= 0x20) { o += c; }   // 제어문자는 버림
+    }
+    return o;
+}
+static int CALLBACK EnumFontProc(const LOGFONTW* lf, const TEXTMETRICW*, DWORD, LPARAM lParam) {
+    auto* names = reinterpret_cast<std::set<std::wstring>*>(lParam);
+    if (lf && lf->lfFaceName[0] && lf->lfFaceName[0] != L'@')   // @ = 세로쓰기 폰트, 제외
+        names->insert(lf->lfFaceName);
+    return 1;
+}
+// 설치된 폰트 패밀리를 JSON 배열 문자열로 만든다 (정렬 + 중복 제거).
+static std::wstring EnumSystemFontsJson() {
+    std::set<std::wstring> names;
+    HDC hdc = GetDC(nullptr);
+    if (hdc) {
+        LOGFONTW lf{}; lf.lfCharSet = DEFAULT_CHARSET;
+        EnumFontFamiliesExW(hdc, &lf, EnumFontProc, reinterpret_cast<LPARAM>(&names), 0);
+        ReleaseDC(nullptr, hdc);
+    }
+    std::wstring json = L"[";
+    bool first = true;
+    for (const auto& n : names) {
+        if (!first) json += L",";
+        first = false;
+        json += L"\"" + JsonEscapeW(n) + L"\"";
+    }
+    json += L"]";
+    return json;
 }
 
 // ---------- window / webview ----------
@@ -118,8 +154,16 @@ static void InitWebView() {
                             // 모듈 로드 + 각 모듈에 UI post 콜백 전달
                             Modules_LoadAll(Host_PostToUi);
 
+                            // 설치된 시스템 폰트 목록을 문서 생성 시 window.__ccsFonts 로 주입한다
+                            // (설정 탭의 글꼴 드롭다운이 읽는다). 등록 완료 후 내비게이트.
+                            std::wstring fontsJs = L"window.__ccsFonts=" + EnumSystemFontsJson() + L";";
                             ResizeToClient();
-                            g_webview->Navigate(kStartUrl);
+                            g_webview->AddScriptToExecuteOnDocumentCreated(fontsJs.c_str(),
+                                Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
+                                    [](HRESULT, LPCWSTR) -> HRESULT {
+                                        if (g_webview) g_webview->Navigate(kStartUrl);
+                                        return S_OK;
+                                    }).Get());
                             return S_OK;
                         }).Get());
                 return S_OK;

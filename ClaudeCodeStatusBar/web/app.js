@@ -305,7 +305,7 @@ $("applyBtn").addEventListener("click", function () { send("apply", collectConfi
   splitter.addEventListener("mousedown", function (e) {
     dragging = true;
     splitter.classList.add("dragging");
-    document.body.style.cursor = "col-resize";
+    document.body.style.cursor = "ew-resize";
     document.body.style.userSelect = "none";
     e.preventDefault();
   });

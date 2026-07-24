@@ -102,7 +102,10 @@ function renderLog(m) {
 
     const desc = document.createElement("span");
     desc.className = "hist-desc";
-    desc.textContent = it.subject || "";
+    const subj = document.createElement("span");
+    subj.className = "hist-subject";
+    subj.textContent = it.subject || "";
+    desc.appendChild(subj);
     const isHead = it.hash === m.head;
     const isRemote = it.hash === m.remote;
     if (isHead) desc.appendChild(makeTag("현재 PC", "tag-current"));
