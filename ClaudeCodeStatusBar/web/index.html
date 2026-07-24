@@ -20,13 +20,18 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <section class="preview-box">
+    <div class="preview-head">미리보기 — 실제 statusLine 모양</div>
+    <pre id="preview" class="preview">(레이아웃에 항목을 추가하세요)</pre>
+  </section>
+
   <div class="main">
     <aside class="palette">
       <div class="palette-head">항목 팔레트 — 오른쪽 줄로 끌어다 놓기</div>
       <div id="paletteBody" class="palette-body"></div>
     </aside>
     <section class="canvas">
-      <div class="canvas-head">레이아웃 — 각 줄이 statusLine 한 줄. 칩을 끌어 순서 변경, ×로 삭제</div>
+      <div class="canvas-head">레이아웃 — 칩을 끌어 순서 변경, ×로 삭제. <b>text</b>는 더블클릭해 편집</div>
       <div id="rows" class="rows"></div>
     </section>
   </div>
