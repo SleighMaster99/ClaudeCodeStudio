@@ -30,3 +30,7 @@ Editor/obj/
 
 # NSIS 인스톨러 산출물
 /installer/*.exe
+
+# .NET E2E 테스트 산출물
+/Tests/**/bin/
+/Tests/**/obj/

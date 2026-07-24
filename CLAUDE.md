@@ -87,3 +87,15 @@ statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). �
 
 - **main 직접 커밋 금지**: 모든 변경은 feature 브랜치(`feature/<주제>`)에서 작업.
 - 반영 흐름: feature 브랜치 커밋 → push → PR → main **스쿼시 머지**(`gh pr merge --squash`). merge commit / rebase 머지 비활성 (스쿼시만).
+
+## GUI 자동 테스트 (E2E)
+
+`Tests/E2E.Net/` — WebView2 앱을 CDP(`--remote-debugging-port`)로 구동하는 .NET/Selenium E2E. 하네스 `CcsApp` 가 앱을 env 포트로 spawn → EdgeDriver attach → top-frame ↔ 모듈 iframe(`SwitchToModule`) 조작.
+
+- **반드시 격리 러너로 실행**한다. `dotnet test` 를 사용자 데스크톱에서 직접 실행 금지 — 앱 창이 떠 포커스를 뺏는다.
+  - 표준 명령(전체): `pwsh Tests\격리데스크톱러너.ps1 -Command 'dotnet test Tests\E2E.Net\ClaudeCodeStudio.E2E.csproj -c Debug'`
+  - 필터 단위: `... -c Debug --filter <테스트명>'`
+  - `--no-build` 사용 시 사전 `dotnet build Tests\E2E.Net\ClaudeCodeStudio.E2E.csproj -c Debug` 필요.
+- 러너(`격리데스크톱러너.ps1`)가 `CreateDesktop` 격리 데스크톱에서 테스트 트리를 실행 → 창이 사용자 데스크톱에 뜨지 않는다. 입력은 CDP 합성이라 실제 마우스/키보드도 안 건드린다.
+- **SendInput / SetForegroundWindow 등 실제 OS 입력을 쓰는 테스트 코드 추가 금지** — 격리 데스크톱에 닿지 않고, 사용자 데스크톱으로 새면 간섭이 된다.
+- 사전 요구: 앱 **Debug 빌드**(`bin\Debug\ClaudeCodeStudio.exe`) — VS F5 또는 `MSBuild ClaudeCodeStudio.sln /t:ClaudeCodeStudio /p:Configuration=Debug /p:Platform=x64`. msedgedriver 는 Selenium Manager 가 자동 해석(버전 핀 필요 시 `CCS_MSEDGEDRIVER_DIR`).
