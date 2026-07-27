@@ -230,7 +230,8 @@ MODULE_API const char* Module_Info() {
 }
 MODULE_API void Module_Init(PostToUiFn post) {
     g_post = post;
-    g_root = FindRoot();
+    std::wstring ro = EnvVar(L"CCSTUDIO_STATUSBAR_ROOT");   // 검증용 루트(config.json/StatusLine.ps1 위치) 오버라이드
+    g_root = ro.empty() ? FindRoot() : ro;
     g_configPath   = g_root + L"\\config.json";
     g_scriptPath   = g_root + L"\\StatusLine.ps1";
     std::wstring so = EnvVar(L"CCSTUDIO_SETTINGS_PATH");   // 검증용 settings 경로 오버라이드
