@@ -10,6 +10,8 @@
 
 #include <string>
 #include <filesystem>
+#include <fstream>
+#include <cstdio>
 #include <set>
 
 #include "core_api.h"
@@ -53,6 +55,68 @@ static std::wstring ExeDir() {
     wchar_t buf[MAX_PATH];
     GetModuleFileNameW(nullptr, buf, MAX_PATH);
     return fs::path(buf).parent_path().wstring();
+}
+
+// ---------- app state dir / window size ----------
+// 앱 로컬 상태(창 크기, WebView2 프로필) 저장 위치.
+// 기본 %LOCALAPPDATA%\ClaudeCodeStudio, 테스트 격리는 CCSTUDIO_STATE_DIR 오버라이드.
+static std::wstring StateDir() {
+    std::wstring o = EnvVar(L"CCSTUDIO_STATE_DIR");
+    return o.empty() ? EnvVar(L"LOCALAPPDATA") + L"\\ClaudeCodeStudio" : o;
+}
+static std::wstring SizeFilePath() { return StateDir() + L"\\window_size.txt"; }
+
+static const int kDefaultW = 1920, kDefaultH = 1080;
+
+// "1600x900" 형식 파싱. 형식/범위 벗어나면 false.
+static bool ParseSize(const std::string& s, int& w, int& h) {
+    int pw = 0, ph = 0;
+    if (std::sscanf(s.c_str(), "%dx%d", &pw, &ph) != 2) return false;
+    if (pw < 800 || pw > 8192 || ph < 600 || ph > 8192) return false;
+    w = pw; h = ph;
+    return true;
+}
+// 저장된 창 크기(설정 탭 해상도 선택값). 없거나 손상이면 기본값.
+static void LoadSavedSize(int& w, int& h) {
+    w = kDefaultW; h = kDefaultH;
+    std::ifstream f(SizeFilePath());
+    if (!f) return;
+    std::string line;
+    std::getline(f, line);
+    ParseSize(line, w, h);
+}
+static void SaveSize(int w, int h) {
+    std::error_code ec;
+    fs::create_directories(StateDir(), ec);
+    std::ofstream f(SizeFilePath(), std::ios::trunc);
+    if (f) f << w << "x" << h;
+}
+
+// 설정 탭의 해상도 선택 → 창 크기 즉시 변경 + 저장(다음 실행 초기 크기).
+// 저장은 선택값 그대로, 화면 적용만 현재 모니터 작업영역에 맞춰 줄인다.
+static void ResizeWindowTo(int w, int h) {
+    if (!g_hwnd) return;
+    int cw = w, ch = h;
+    HMONITOR mon = MonitorFromWindow(g_hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{ sizeof(mi) };
+    if (GetMonitorInfoW(mon, &mi)) {
+        int aw = mi.rcWork.right - mi.rcWork.left;
+        int ah = mi.rcWork.bottom - mi.rcWork.top;
+        if (cw > aw) cw = aw;
+        if (ch > ah) ch = ah;
+    }
+    if (IsZoomed(g_hwnd)) ShowWindow(g_hwnd, SW_RESTORE);
+    SetWindowPos(g_hwnd, nullptr, 0, 0, cw, ch, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    SaveSize(w, h);
+}
+
+// router 가 넘긴 "core" 모듈 명령 처리 (모듈 DLL 이 아닌 Core 자체 명령).
+void Host_HandleCoreCmd(const std::string& jsonMsg) {
+    std::string cmd = JsonGetStr(jsonMsg, "cmd");
+    if (cmd == "resize") {
+        int w = 0, h = 0;
+        if (ParseSize(JsonGetStr(jsonMsg, "arg"), w, h)) ResizeWindowTo(w, h);
+    }
 }
 
 // ---------- system fonts ----------
@@ -113,7 +177,7 @@ void Host_PostToUi(const char* json) {
 }
 
 static void InitWebView() {
-    std::wstring userData = EnvVar(L"LOCALAPPDATA") + L"\\ClaudeCodeStudio\\WebView2";
+    std::wstring userData = StateDir() + L"\\WebView2";
 
     // 가상 호스트 이름(claudecodestudio.local)을 로컬로 즉시 해석시킨다.
     // WebView2 가 이 이름을 DNS/mDNS 로 조회하려다 콜드 스타트가 지연되는 것을 예방(가상 호스트라 실제 통신은 없음).
@@ -162,9 +226,12 @@ static void InitWebView() {
                             // 모듈 로드 + 각 모듈에 UI post 콜백 전달
                             Modules_LoadAll(Host_PostToUi);
 
-                            // 설치된 시스템 폰트 목록을 문서 생성 시 window.__ccsFonts 로 주입한다
-                            // (설정 탭의 글꼴 드롭다운이 읽는다). 등록 완료 후 내비게이트.
-                            std::wstring fontsJs = L"window.__ccsFonts=" + EnumSystemFontsJson() + L";";
+                            // 설치된 시스템 폰트 목록 + 현재 창 크기 설정값을 문서 생성 시 주입한다
+                            // (설정 탭의 글꼴/창 크기 드롭다운이 읽는다). 등록 완료 후 내비게이트.
+                            int sw = 0, sh = 0;
+                            LoadSavedSize(sw, sh);
+                            std::wstring fontsJs = L"window.__ccsFonts=" + EnumSystemFontsJson() + L";"
+                                + L"window.__ccsWinSize=\"" + std::to_wstring(sw) + L"x" + std::to_wstring(sh) + L"\";";
                             ResizeToClient();
                             g_webview->AddScriptToExecuteOnDocumentCreated(fontsJs.c_str(),
                                 Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
@@ -196,8 +263,10 @@ extern "C" CORE_API int Core_Run(HINSTANCE hInst, int nCmdShow) {
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     RegisterClassExW(&wc);
 
+    int winW = 0, winH = 0;
+    LoadSavedSize(winW, winH);   // 설정 탭 해상도 선택값 (없으면 1920x1080)
     g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"ClaudeCodeStudio",
-        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1920, 1080,
+        WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, winW, winH,
         nullptr, nullptr, hInst, nullptr);
     ShowWindow(g_hwnd, nCmdShow);
     UpdateWindow(g_hwnd);

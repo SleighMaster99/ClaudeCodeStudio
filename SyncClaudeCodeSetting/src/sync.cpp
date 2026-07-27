@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 
 #include "module_api.h"
@@ -17,6 +18,13 @@ namespace fs = std::filesystem;
 
 static PostToUiFn   g_post = nullptr;
 static std::wstring g_repoDir;   // 기본 %USERPROFILE%\.claude (테스트 시 CCSTUDIO_CLAUDE_DIR)
+
+// 셸 설정 탭 값 (configure 명령으로 갱신, 저장소는 웹 localStorage — 여기는 프로세스 생존 동안만).
+static const char*  kDefaultRepoUrl   = "https://github.com/SleighMaster99/claude-code-settings.git";
+static const char*  kDefaultCommitTpl = "update from {host} {time}";
+static int          g_logCount    = 8;               // 이력 표시 개수 (1~50)
+static std::string  g_commitTpl;                     // 커밋 메시지 형식 (빈 값 = 기본)
+static std::string  g_defaultRepo = kDefaultRepoUrl; // 초기 설정 기본 저장소 URL
 
 // ---------- string helpers ----------
 static std::wstring Widen(const std::string& s) {
@@ -128,6 +136,11 @@ static void PostToWeb(const std::string& json) {
 }
 
 // ---------- misc ----------
+static std::string ReplaceAll(std::string s, const std::string& from, const std::string& to) {
+    size_t p = 0;
+    while ((p = s.find(from, p)) != std::string::npos) { s.replace(p, from.size(), to); p += to.size(); }
+    return s;
+}
 static std::string HostName() {
     wchar_t buf[256]; DWORD n = 256;
     if (GetComputerNameW(buf, &n)) return Narrow(std::wstring(buf, n));
@@ -194,7 +207,7 @@ static void CmdLog() {
     std::string headHash, remoteHash, raw;
     Git(L"rev-parse --short HEAD", headHash);           headHash = Trim(headHash);
     Git(L"rev-parse --short origin/main", remoteHash);   remoteHash = Trim(remoteHash);
-    Git(L"log -8 --pretty=format:%h\x1f%cr\x1f%s\x1e", raw);
+    Git(L"log -" + std::to_wstring(g_logCount) + L" --pretty=format:%h\x1f%cr\x1f%s\x1e", raw);
 
     std::string j = "{\"type\":\"log\",\"head\":\"" + JsonEsc(headHash) +
                     "\",\"remote\":\"" + JsonEsc(remoteHash) + "\",\"items\":[";
@@ -247,7 +260,11 @@ static void CmdPush() {
     if (!Trim(dirty).empty()) {
         std::string tmp;
         Git(L"add -A", tmp);
-        std::string msg = "update from " + HostName() + " " + NowStamp();
+        // 커밋 메시지 형식({host}/{time} 치환). 따옴표는 -m 인자 보호를 위해 치환.
+        std::string tpl = g_commitTpl.empty() ? kDefaultCommitTpl : g_commitTpl;
+        std::string msg = ReplaceAll(ReplaceAll(tpl, "{host}", HostName()), "{time}", NowStamp());
+        for (auto& c : msg) if (c == '"') c = '\'';
+        if (Trim(msg).empty()) msg = ReplaceAll(ReplaceAll(std::string(kDefaultCommitTpl), "{host}", HostName()), "{time}", NowStamp());
         Git(L"commit -m \"" + Widen(msg) + L"\"", tmp);
     }
     std::string out;
@@ -295,8 +312,7 @@ static void BackupExisting() {
 static void CmdBootstrap(const std::string& url) {
     if (IsConfigured()) { Result(false, "이미 설정되어 있습니다", ""); CmdStatus(); CmdLog(); return; }
 
-    std::string repoUrl = url.empty()
-        ? "https://github.com/SleighMaster99/claude-code-settings.git" : url;
+    std::string repoUrl = url.empty() ? g_defaultRepo : url;
     std::string out, tmp;
 
     if (Git(L"init -b main", tmp) != 0) { Result(false, "저장소 초기화(git init) 실패", Trim(tmp)); return; }
@@ -314,6 +330,16 @@ static void CmdBootstrap(const std::string& url) {
     CmdLog();
 }
 
+// 셸 설정 탭 값 수신. 응답 없음 — 이후 명령부터 반영된다.
+static void CmdConfigure(const std::string& req) {
+    std::string n = JsonGet(req, "logCount");
+    int v = std::atoi(n.c_str());
+    g_logCount = (v >= 1 && v <= 50) ? v : 8;
+    g_commitTpl = JsonGet(req, "commitMsg");
+    std::string r = Trim(JsonGet(req, "defaultRepo"));
+    g_defaultRepo = r.empty() ? kDefaultRepoUrl : r;
+}
+
 // ---------- module exports ----------
 MODULE_API const char* Module_Info() {
     return "{\"id\":\"sync\",\"tabTitle\":\"설정 동기화\",\"webEntry\":\"index.html\"}";
@@ -328,6 +354,7 @@ MODULE_API void Module_Handle(const char* reqJson) {
     std::string cmd = JsonGet(req, "cmd");
     std::string arg = JsonGet(req, "arg");
     if      (cmd == "status")    CmdStatus();
+    else if (cmd == "configure") CmdConfigure(req);
     else if (cmd == "log")       CmdLog();
     else if (cmd == "refresh")   CmdFetch();
     else if (cmd == "pull")      CmdPull();

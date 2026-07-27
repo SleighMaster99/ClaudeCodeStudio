@@ -14,13 +14,14 @@ public sealed class CcsApp : IDisposable
 {
     private readonly Process _proc;
     private readonly string? _tempClaudeDir;
+    private readonly string _tempStateDir;   // CCSTUDIO_STATE_DIR — 창 크기/WebView2 프로필 격리 (사용자 상태 오염 방지)
     public EdgeDriver Driver { get; }
     public int Port { get; }
     public IJavaScriptExecutor Js => (IJavaScriptExecutor)Driver;
 
-    private CcsApp(Process proc, EdgeDriver driver, int port, string? tempClaudeDir)
+    private CcsApp(Process proc, EdgeDriver driver, int port, string? tempClaudeDir, string tempStateDir)
     {
-        _proc = proc; Driver = driver; Port = port; _tempClaudeDir = tempClaudeDir;
+        _proc = proc; Driver = driver; Port = port; _tempClaudeDir = tempClaudeDir; _tempStateDir = tempStateDir;
     }
 
     // repo 루트 = ClaudeCodeStudio.sln 위치까지 상향 탐색.
@@ -43,6 +44,11 @@ public sealed class CcsApp : IDisposable
         var psi = new ProcessStartInfo(ExePath) { UseShellExecute = false };
         psi.EnvironmentVariables["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = $"--remote-debugging-port={port}";
 
+        // 앱 로컬 상태(창 크기 파일 + WebView2 프로필/localStorage)를 테스트별 임시 폴더로 격리
+        string stateTmp = Path.Combine(Path.GetTempPath(), "ccs-e2e-state-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stateTmp);
+        psi.EnvironmentVariables["CCSTUDIO_STATE_DIR"] = stateTmp;
+
         string? tmp = null;
         if (unconfigured)
         {
@@ -62,7 +68,7 @@ public sealed class CcsApp : IDisposable
             throw new InvalidOperationException("app page(https://claudecodestudio.local) 미발견 — launch 실패");
         }
 
-        var app = new CcsApp(proc, driver, port, tmp);
+        var app = new CcsApp(proc, driver, port, tmp, stateTmp);
         app.WaitForSelector(".tabbar", 10000);
         return app;
     }
@@ -156,6 +162,7 @@ public sealed class CcsApp : IDisposable
         TryKill(_proc);
         try { _proc.WaitForExit(10000); } catch { }
         if (_tempClaudeDir != null) { try { Directory.Delete(_tempClaudeDir, true); } catch { } }
+        try { Directory.Delete(_tempStateDir, true); } catch { }
     }
 
     private static void TryKill(Process proc)

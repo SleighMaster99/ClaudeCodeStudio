@@ -24,9 +24,10 @@
       <section class="pane" id="pane-settings">
         <div class="settings">
           <div class="settings-inner">
-            <h2 class="settings-title">화면 설정</h2>
-            <p class="settings-desc">UI 글자 크기와 글꼴을 조절합니다. 변경은 모든 탭에 즉시 적용됩니다.</p>
+            <h2 class="settings-title">설정</h2>
+            <p class="settings-desc">화면·시작 동작과 설정 동기화 탭의 동작을 조절합니다. 변경은 즉시 적용되고 이 PC 에 저장됩니다.</p>
 
+            <h3 class="set-section">화면</h3>
             <div class="set-row">
               <label class="set-label" for="fontScale">글자 크기</label>
               <div class="set-control">
@@ -46,11 +47,97 @@
               </div>
             </div>
 
+            <div class="set-row">
+              <label class="set-label" for="theme">테마</label>
+              <div class="set-control">
+                <select id="theme" class="set-select">
+                  <option value="light">라이트</option>
+                  <option value="dark">다크</option>
+                </select>
+                <span class="set-hint">모든 탭에 즉시 적용됩니다</span>
+              </div>
+            </div>
+
+            <div class="set-row">
+              <label class="set-label" for="winSize">창 크기</label>
+              <div class="set-control">
+                <select id="winSize" class="set-select">
+                  <option value="1280x720">1280 × 720</option>
+                  <option value="1366x768">1366 × 768</option>
+                  <option value="1600x900">1600 × 900</option>
+                  <option value="1920x1080">1920 × 1080</option>
+                  <option value="2560x1440">2560 × 1440</option>
+                </select>
+                <span class="set-hint">즉시 바뀌고 다음 실행에도 유지됩니다. 화면보다 크면 화면에 맞춥니다</span>
+              </div>
+            </div>
+
+            <h3 class="set-section">시작</h3>
+            <div class="set-row">
+              <label class="set-label" for="startTab">시작 탭</label>
+              <div class="set-control">
+                <select id="startTab" class="set-select">
+                  <option value="sync">설정 동기화</option>
+                  <option value="statusbar">상태바 설정</option>
+                  <option value="last">마지막 사용 탭</option>
+                </select>
+              </div>
+            </div>
+
+            <h3 class="set-section">설정 동기화</h3>
+            <div class="set-row">
+              <label class="set-label" for="syncAuto">자동 새로고침</label>
+              <div class="set-control">
+                <select id="syncAuto" class="set-select">
+                  <option value="0">사용 안 함</option>
+                  <option value="1">1분마다</option>
+                  <option value="5">5분마다</option>
+                  <option value="15">15분마다</option>
+                  <option value="30">30분마다</option>
+                </select>
+                <span class="set-hint">원격 상태를 주기적으로 확인합니다 (fetch)</span>
+              </div>
+            </div>
+
+            <div class="set-row">
+              <label class="set-label" for="syncStartupFetch">시작 시 원격 확인</label>
+              <div class="set-control">
+                <input type="checkbox" id="syncStartupFetch" class="set-check">
+                <span class="set-hint">앱을 켤 때 원격을 한 번 확인해 최신 여부를 바로 보여줍니다</span>
+              </div>
+            </div>
+
+            <div class="set-row">
+              <label class="set-label" for="syncHist">이력 표시 개수</label>
+              <div class="set-control">
+                <input type="number" id="syncHist" class="set-input set-num" min="1" max="50" step="1">
+                <span class="set-hint">변경 이력 목록에 보여줄 커밋 수 (1~50)</span>
+              </div>
+            </div>
+
+            <div class="set-row">
+              <label class="set-label" for="syncCommitMsg">커밋 메시지 형식</label>
+              <div class="set-control">
+                <input id="syncCommitMsg" class="set-input" placeholder="update from {host} {time}"
+                       autocomplete="off" spellcheck="false">
+                <span class="set-hint">{host}=PC 이름, {time}=일시 로 치환. 비우면 기본 형식</span>
+              </div>
+            </div>
+
+            <div class="set-row">
+              <label class="set-label" for="syncRepoUrl">기본 저장소 URL</label>
+              <div class="set-control">
+                <input id="syncRepoUrl" class="set-input" placeholder="https://github.com/SleighMaster99/claude-code-settings.git"
+                       autocomplete="off" spellcheck="false">
+                <span class="set-hint">초기 설정 화면의 저장소 URL 기본값. 비우면 기존 기본값</span>
+              </div>
+            </div>
+
             <div class="set-actions">
               <button id="settingsReset" class="set-btn">기본값으로</button>
             </div>
 
-            <p class="settings-note">글자 크기는 텍스트에만 적용되어 여백은 유지됩니다. 글꼴은 이 PC 에 설치된 글꼴을 입력·검색해 고를 수 있고, 미리보기·코드 표시를 포함한 전체에 적용됩니다. 설정은 이 PC 에 저장됩니다.</p>
+            <p class="settings-note">글자 크기는 텍스트에만 적용되어 여백은 유지됩니다. 글꼴은 이 PC 에 설치된 글꼴을 입력·검색해 고를 수 있습니다. 상태바 표시 옵션(막대 폭·색 임계값·아이콘 등)은 상태바 설정 탭에 있습니다.</p>
           </div>
         </div>
       </section>
@@ -58,26 +145,88 @@
   </div>
 
   <script>
-    // ----- 좌측 탭 전환 -----
-    var tabs  = document.querySelectorAll('.tab');
-    var panes = document.querySelectorAll('.pane');
-    tabs.forEach(function (tab) {
-      tab.addEventListener('click', function () {
-        tabs.forEach(function (t) { t.classList.remove('active'); });
-        panes.forEach(function (p) { p.classList.remove('active'); });
-        tab.classList.add('active');
-        var pane = document.getElementById('pane-' + tab.dataset.tab);
-        if (pane) pane.classList.add('active');
-      });
-    });
-
-    // ----- 메시지 중계: 모듈 iframe <-> C++ 호스트 -----
     var wv = (window.chrome && window.chrome.webview) ? window.chrome.webview : null;
     var frames = {
       sync: document.getElementById('frame-sync'),
       statusbar: document.getElementById('frame-statusbar')
     };
 
+    // ----- 설정 저장 (localStorage — 모듈 iframe 과 같은 출처라 공유된다) -----
+    var SETTINGS_KEY = 'ccs.ui.settings.v1';    // 화면/시작 (셸이 소비)
+    var SYNC_KEY = 'ccs.sync.settings.v1';      // 설정 동기화 탭 동작 (sync 모듈이 소비)
+    var DEFAULT_PX = 18;               // 기본 글자 크기. rem 의 기준 root font-size(px)
+    var PX_MIN = 16, PX_MAX = 29;
+
+    function clampPx(v) { return Math.min(PX_MAX, Math.max(PX_MIN, Math.round(v))); }
+    function clampHist(v) { return Math.min(50, Math.max(1, Math.round(v) || 8)); }
+    // 저장/입력값에서 앞뒤 따옴표 제거 (글꼴명 원형으로 보관)
+    function stripQuotes(s) { return (s || '').replace(/^\s*['"]?|['"]?\s*$/g, ''); }
+
+    function loadSettings() {
+      var out = { rootPx: DEFAULT_PX, font: '', theme: 'light', startTab: 'sync', lastTab: 'sync' };
+      try {
+        var s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+        if (s) {
+          if (typeof s.rootPx === 'number') out.rootPx = clampPx(s.rootPx);
+          else if (typeof s.scale === 'number') out.rootPx = clampPx(16 * s.scale);   // 구버전(% 배율) 마이그레이션
+          if (typeof s.font === 'string') out.font = stripQuotes(s.font);
+          if (s.theme === 'dark') out.theme = 'dark';
+          if (s.startTab === 'statusbar' || s.startTab === 'last') out.startTab = s.startTab;
+          if (frames[s.lastTab]) out.lastTab = s.lastTab;
+        }
+      } catch (_) {}
+      return out;
+    }
+    function saveSettings() {
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
+    }
+    function loadSyncSettings() {
+      var out = { autoMin: 0, startupFetch: false, histCount: 8, commitMsg: '', repoUrl: '' };
+      try {
+        var s = JSON.parse(localStorage.getItem(SYNC_KEY));
+        if (s) {
+          if ([1, 5, 15, 30].indexOf(+s.autoMin) >= 0) out.autoMin = +s.autoMin;
+          out.startupFetch = !!s.startupFetch;
+          if (s.histCount != null) out.histCount = clampHist(+s.histCount);
+          if (typeof s.commitMsg === 'string') out.commitMsg = s.commitMsg;
+          if (typeof s.repoUrl === 'string') out.repoUrl = s.repoUrl.trim();
+        }
+      } catch (_) {}
+      return out;
+    }
+    function saveSyncSettings() {
+      try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncSettings)); } catch (_) {}
+    }
+    var settings = loadSettings();
+    var syncSettings = loadSyncSettings();
+
+    // 변경된 동기화 설정을 sync 모듈 iframe 에 알린다 (타이머/이력 개수 즉시 반영)
+    function pushSyncSettings() {
+      var f = frames.sync;
+      try { if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'settings', settings: syncSettings }, '*'); } catch (_) {}
+    }
+
+    // ----- 좌측 탭 전환 -----
+    var tabs  = document.querySelectorAll('.tab');
+    var panes = document.querySelectorAll('.pane');
+    function activateTab(name) {
+      var target = document.querySelector('.tab[data-tab="' + name + '"]');
+      var pane = document.getElementById('pane-' + name);
+      if (!target || !pane) return;
+      tabs.forEach(function (t) { t.classList.remove('active'); });
+      panes.forEach(function (p) { p.classList.remove('active'); });
+      target.classList.add('active');
+      pane.classList.add('active');
+    }
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var name = tab.dataset.tab;
+        activateTab(name);
+        if (frames[name]) { settings.lastTab = name; saveSettings(); }   // 모듈 탭만 기억
+      });
+    });
+
+    // ----- 메시지 중계: 모듈 iframe <-> C++ 호스트 -----
     // 모듈 iframe 이 부모로 보낸 요청 객체 -> C++ (JSON 문자열)
     window.addEventListener('message', function (e) {
       if (!wv || !e.data || typeof e.data !== 'object') return;
@@ -100,43 +249,17 @@
       });
     }
 
-    // ----- 화면 설정 (글자 크기 / 글꼴) -----
-    // 셸과 모듈 iframe 은 같은 출처라 부모가 각 문서에 직접 스타일을 주입한다.
-    //   글자 크기: 각 문서 root(html) 의 font-size(px) 를 직접 지정 → 모든 rem 글자가 비례 확대(여백 px 유지).
-    //   글꼴    : 각 문서에 폰트 오버라이드 <style> 을 주입(미리보기·코드 포함 전체 적용).
-    var SETTINGS_KEY = 'ccs.ui.settings.v1';
-    var DEFAULT_PX = 18;               // 기본 글자 크기(키워둠). rem 의 기준 root font-size(px)
-    var PX_MIN = 16, PX_MAX = 29;
-
-    function clampPx(v) { return Math.min(PX_MAX, Math.max(PX_MIN, Math.round(v))); }
-    // 저장/입력값에서 앞뒤 따옴표 제거 (글꼴명 원형으로 보관)
-    function stripQuotes(s) { return (s || '').replace(/^\s*['"]?|['"]?\s*$/g, ''); }
-
-    function loadSettings() {
-      try {
-        var s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
-        if (s) {
-          var px = null;
-          if (typeof s.rootPx === 'number') px = s.rootPx;
-          else if (typeof s.scale === 'number') px = 16 * s.scale;   // 구버전(% 배율) 저장값 마이그레이션
-          var font = (typeof s.font === 'string') ? stripQuotes(s.font) : '';
-          if (px != null) return { rootPx: clampPx(px), font: font };
-        }
-      } catch (_) {}
-      return { rootPx: DEFAULT_PX, font: '' };
-    }
-    function saveSettings() {
-      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
-    }
-    var settings = loadSettings();
-
-    // 공백 포함 글꼴명을 큰따옴표로 감싸 CSS 에 안전하게 넣는다
+    // ----- 화면 설정 적용 (글자 크기 / 글꼴 / 테마) -----
+    // 셸과 모듈 iframe 은 같은 출처라 부모가 각 문서에 직접 스타일/속성을 주입한다.
+    //   글자 크기: 각 문서 root(html) 의 font-size(px) 직접 지정 → 모든 rem 글자 비례 확대(여백 px 유지).
+    //   글꼴    : 각 문서에 폰트 오버라이드 <style> 주입.
+    //   테마    : 각 문서 root 에 data-theme 속성 지정 (모듈 CSS 가 반응).
     function cssFont(name) { return '"' + String(name).replace(/"/g, '') + '"'; }
 
-    // 한 문서(셸 또는 모듈 iframe)에 현재 설정을 적용
     function applyToDoc(doc) {
       if (!doc || !doc.documentElement) return;
       doc.documentElement.style.fontSize = settings.rootPx + 'px';
+      doc.documentElement.setAttribute('data-theme', settings.theme);
       var st = doc.getElementById('ccs-ui-style');
       if (!st) {
         st = doc.createElement('style'); st.id = 'ccs-ui-style';
@@ -158,6 +281,14 @@
     var elFont = document.getElementById('fontFamily');
     var elFontClear = document.getElementById('fontClear');
     var elFontList = document.getElementById('fontList');
+    var elTheme = document.getElementById('theme');
+    var elWinSize = document.getElementById('winSize');
+    var elStartTab = document.getElementById('startTab');
+    var elSyncAuto = document.getElementById('syncAuto');
+    var elSyncStartup = document.getElementById('syncStartupFetch');
+    var elSyncHist = document.getElementById('syncHist');
+    var elSyncCommit = document.getElementById('syncCommitMsg');
+    var elSyncRepo = document.getElementById('syncRepoUrl');
 
     // 설치된 시스템 글꼴을 검색용 datalist 로 채운다 (C++ 가 window.__ccsFonts 로 주입)
     function populateSystemFonts() {
@@ -170,10 +301,31 @@
       }
     }
 
+    // 창 크기 드롭다운 초기값 (C++ 가 window.__ccsWinSize 로 현재 저장값 주입)
+    function initWinSize() {
+      var cur = (typeof window.__ccsWinSize === 'string') ? window.__ccsWinSize : '1920x1080';
+      var found = false;
+      for (var i = 0; i < elWinSize.options.length; i++)
+        if (elWinSize.options[i].value === cur) { found = true; break; }
+      if (!found) {   // 목록 밖 저장값(수동 편집 등)이면 현재값 항목을 추가해 표시
+        var o = document.createElement('option');
+        o.value = cur; o.textContent = '현재 (' + cur.replace('x', ' × ') + ')';
+        elWinSize.insertBefore(o, elWinSize.firstChild);
+      }
+      elWinSize.value = cur;
+    }
+
     function syncControls() {
       elScale.value = settings.rootPx;
       elScaleVal.textContent = settings.rootPx + 'px';
       elFont.value = settings.font;            // 빈 값 = 시스템 기본
+      elTheme.value = settings.theme;
+      elStartTab.value = settings.startTab;
+      elSyncAuto.value = String(syncSettings.autoMin);
+      elSyncStartup.checked = syncSettings.startupFetch;
+      elSyncHist.value = syncSettings.histCount;
+      elSyncCommit.value = syncSettings.commitMsg;
+      elSyncRepo.value = syncSettings.repoUrl;
     }
 
     elScale.addEventListener('input', function () {
@@ -192,12 +344,41 @@
       applyAll(); saveSettings();
       elFont.focus();
     });
-    document.getElementById('settingsReset').addEventListener('click', function () {
-      settings = { rootPx: DEFAULT_PX, font: '' };
-      syncControls(); applyAll(); saveSettings();
+    elTheme.addEventListener('change', function () {
+      settings.theme = (elTheme.value === 'dark') ? 'dark' : 'light';
+      applyAll(); saveSettings();
+    });
+    elWinSize.addEventListener('change', function () {
+      if (wv) wv.postMessage(JSON.stringify({ module: 'core', cmd: 'resize', arg: elWinSize.value }));
+    });
+    elStartTab.addEventListener('change', function () {
+      settings.startTab = elStartTab.value;
+      saveSettings();
     });
 
-    // 모듈 iframe 이 (재)로드될 때마다 설정을 다시 주입 (내부 렌더 후에도 root/폰트 유지)
+    function onSyncSettingChanged() {
+      syncSettings.autoMin = parseInt(elSyncAuto.value, 10) || 0;
+      syncSettings.startupFetch = elSyncStartup.checked;
+      syncSettings.histCount = clampHist(parseInt(elSyncHist.value, 10));
+      syncSettings.commitMsg = elSyncCommit.value;
+      syncSettings.repoUrl = elSyncRepo.value.trim();
+      saveSyncSettings(); pushSyncSettings();
+    }
+    elSyncAuto.addEventListener('change', onSyncSettingChanged);
+    elSyncStartup.addEventListener('change', onSyncSettingChanged);
+    elSyncHist.addEventListener('change', function () { onSyncSettingChanged(); elSyncHist.value = syncSettings.histCount; });
+    elSyncCommit.addEventListener('input', onSyncSettingChanged);
+    elSyncRepo.addEventListener('input', onSyncSettingChanged);
+
+    document.getElementById('settingsReset').addEventListener('click', function () {
+      settings = { rootPx: DEFAULT_PX, font: '', theme: 'light', startTab: 'sync', lastTab: settings.lastTab };
+      syncSettings = { autoMin: 0, startupFetch: false, histCount: 8, commitMsg: '', repoUrl: '' };
+      syncControls(); applyAll(); saveSettings(); saveSyncSettings(); pushSyncSettings();
+      elWinSize.value = '1920x1080';
+      if (wv) wv.postMessage(JSON.stringify({ module: 'core', cmd: 'resize', arg: '1920x1080' }));
+    });
+
+    // 모듈 iframe 이 (재)로드될 때마다 설정을 다시 주입 (내부 렌더 후에도 root/폰트/테마 유지)
     for (var fk in frames) {
       (function (f) {
         if (!f) return;
@@ -209,8 +390,10 @@
 
     // 초기 적용
     populateSystemFonts();
+    initWinSize();
     syncControls();
     applyAll();
+    activateTab(settings.startTab === 'last' ? settings.lastTab : settings.startTab);
   </script>
 </body>
 </html>

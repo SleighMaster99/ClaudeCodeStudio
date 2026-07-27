@@ -13,8 +13,8 @@ public class SmokeTest
     {
         using var app = CcsApp.Launch(unconfigured: true);
 
-        // top-frame: 좌측 탭 2개 렌더
-        Assert.AreEqual(2, app.Driver.FindElements(By.CssSelector(".tab")).Count, "좌측 탭 2개");
+        // top-frame: 좌측 탭 3개 렌더 (모듈 2 + 설정)
+        Assert.AreEqual(3, app.Driver.FindElements(By.CssSelector(".tab")).Count, "좌측 탭 3개(모듈 2 + 설정)");
 
         // sync 모듈 iframe 진입 (미설정 → '초기 설정' 화면)
         app.SwitchToModule("sync");

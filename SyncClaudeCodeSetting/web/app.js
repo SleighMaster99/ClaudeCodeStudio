@@ -3,8 +3,56 @@
 // iframe 안에서 동작. C++ 호스트와는 부모(Core 셸)를 통해 중계로 통신한다.
 //   보내기: window.parent.postMessage({module,cmd,arg})  -> 부모가 chrome.webview 로 전달
 //   받기:   부모가 C++ 결과(JSON)를 이 iframe 으로 postMessage -> message 이벤트
+
+// 테마를 로드 직후 적용 (셸 설정과 같은 출처 localStorage 공유 — 늦은 주입으로 인한 깜빡임 방지)
+try {
+  var __t = JSON.parse(localStorage.getItem("ccs.ui.settings.v1"));
+  document.documentElement.setAttribute("data-theme", (__t && __t.theme === "dark") ? "dark" : "light");
+} catch (_) {}
+
 function send(cmd, arg) {
   window.parent.postMessage({ module: "sync", cmd: cmd, arg: arg || "" }, "*");
+}
+
+// ----- 앱 설정 (셸 설정 탭이 저장, 여기서 소비) -----
+var SYNC_KEY = "ccs.sync.settings.v1";
+function normalizeSettings(s) {
+  var out = { autoMin: 0, startupFetch: false, histCount: 8, commitMsg: "", repoUrl: "" };
+  if (s) {
+    if ([1, 5, 15, 30].indexOf(+s.autoMin) >= 0) out.autoMin = +s.autoMin;
+    out.startupFetch = !!s.startupFetch;
+    if (s.histCount != null) out.histCount = Math.min(50, Math.max(1, Math.round(+s.histCount) || 8));
+    if (typeof s.commitMsg === "string") out.commitMsg = s.commitMsg;
+    if (typeof s.repoUrl === "string") out.repoUrl = s.repoUrl.trim();
+  }
+  return out;
+}
+function loadAppSettings() {
+  try { return normalizeSettings(JSON.parse(localStorage.getItem(SYNC_KEY))); }
+  catch (_) { return normalizeSettings(null); }
+}
+var appSettings = loadAppSettings();
+var isConfigured = null;   // 마지막 status 의 configured (자동 새로고침 가드)
+
+// C++ sync 모듈에 설정 전달 — 이후 log/push/bootstrap 명령부터 반영된다
+function sendConfigure() {
+  window.parent.postMessage({
+    module: "sync", cmd: "configure",
+    logCount: String(appSettings.histCount),
+    commitMsg: appSettings.commitMsg,
+    defaultRepo: appSettings.repoUrl
+  }, "*");
+}
+
+var autoTimer = null;
+function applyAutoRefresh() {
+  clearInterval(autoTimer);
+  autoTimer = null;
+  if (appSettings.autoMin > 0) {
+    autoTimer = setInterval(function () {
+      if (isConfigured) send("refresh");   // 미설정(초기 설정 화면)이면 건너뜀
+    }, appSettings.autoMin * 60000);
+  }
 }
 
 const $ = (id) => document.getElementById(id);
@@ -137,12 +185,23 @@ function makeTag(text, cls) {
 
 function handle(msg) {
   switch (msg.type) {
-    case "status": renderStatus(msg); break;
+    case "status":
+      isConfigured = msg.configured !== false;
+      renderStatus(msg);
+      break;
     case "log":    renderLog(msg); break;
     case "result":
       showToast(msg.message + (msg.detail ? " — " + msg.detail : ""), msg.ok);
       // 부트스트랩 등 결과 직후, 초기 설정 화면이면 상태를 다시 조회(성공 시 전환/실패 시 버튼 복구)
       if (!$("setup").hidden) send("status");
+      break;
+    case "settings":   // 셸 설정 탭에서 변경 통지 → 즉시 반영
+      appSettings = normalizeSettings(msg.settings);
+      sendConfigure();
+      applyAutoRefresh();
+      if (isConfigured) send("log");   // 이력 개수 변경 반영
+      var ru = $("repoUrl");
+      if (ru && appSettings.repoUrl && document.activeElement !== ru) ru.value = appSettings.repoUrl;
       break;
     default: break;
   }
@@ -173,12 +232,17 @@ $("setupBtn").addEventListener("click", function () {
   send("bootstrap", url);
 });
 
-$("themeBtn").addEventListener("click", () => {
-  const cur = document.documentElement.getAttribute("data-theme") || "light";
-  document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
-});
-
-// default to light (matches the user's terminal theme); request initial state.
-document.documentElement.setAttribute("data-theme", "light");
-send("status");
-send("log");
+// 시작 시퀀스: 설정을 C++ 모듈에 먼저 전달(이력 개수 등) → 상태 조회.
+// '시작 시 원격 확인' 이 켜져 있으면 fetch 포함 새로고침으로 최신 여부를 바로 반영한다.
+sendConfigure();
+if (appSettings.repoUrl) {
+  var __ru = $("repoUrl");
+  if (__ru) __ru.value = appSettings.repoUrl;
+}
+if (appSettings.startupFetch) {
+  send("refresh");
+} else {
+  send("status");
+  send("log");
+}
+applyAutoRefresh();

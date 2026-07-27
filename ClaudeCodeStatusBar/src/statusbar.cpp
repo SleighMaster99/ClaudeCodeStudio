@@ -151,6 +151,12 @@ static void CmdSave(const std::string& req) {
     Result(true, "레이아웃을 저장했습니다", "");
 }
 
+// pwsh(PowerShell 7)가 PATH 에 있는지 확인 — 없는데 pwsh 로 적용하면 statusLine 이 조용히 죽는다.
+static bool PwshAvailable() {
+    wchar_t buf[MAX_PATH];
+    return SearchPathW(nullptr, L"pwsh.exe", nullptr, MAX_PATH, buf, nullptr) > 0;
+}
+
 // StatusLine.ps1 경로를 statusLine command 인자로 변환한다.
 // g_scriptPath 가 %USERPROFILE% 하위(= 설치본)면 ~ 기반 forward-slash 경로(PC 공통,
 // Git Bash 가 ~ 확장 — D10 실측 확인)를 따옴표 없이, 아니면 절대경로를 따옴표로 반환.
@@ -167,8 +173,10 @@ static std::string ScriptArg() {
 }
 
 // settings.json 의 statusLine 값(객체)만 새 값으로 교체/삽입, 나머지 필드 보존.
-static void ApplyStatusLine() {
-    std::string rawCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File " + ScriptArg();
+// shell: "pwsh" 면 PowerShell 7, 그 외는 Windows PowerShell 5 (config options.shell).
+static void ApplyStatusLine(const std::string& shell) {
+    std::string exe = (shell == "pwsh") ? "pwsh" : "powershell";
+    std::string rawCmd = exe + " -NoProfile -ExecutionPolicy Bypass -File " + ScriptArg();
     std::string obj = "{ \"type\": \"command\", \"command\": \"" + JsonEsc(rawCmd) + "\" }";
 
     std::string s = ReadFileUtf8(g_settingsPath);
@@ -205,8 +213,14 @@ static void ApplyStatusLine() {
 static void CmdApply(const std::string& req) {
     std::string cfg = JsonGetObject(req, "config");
     if (cfg.empty()) { Result(false, "적용할 레이아웃이 없습니다", ""); return; }
+    std::string shell = JsonGetStr(JsonGetObject(cfg, "options"), "shell");
+    if (shell == "pwsh" && !PwshAvailable()) {
+        Result(false, "pwsh(PowerShell 7)를 찾을 수 없습니다",
+               "PowerShell 7 설치 후 다시 적용하거나 실행 셸을 powershell 로 바꾸세요");
+        return;
+    }
     if (!WriteFileUtf8(g_configPath, cfg)) { Result(false, "config.json 저장 실패", Narrow(g_configPath)); return; }
-    ApplyStatusLine();
+    ApplyStatusLine(shell);
     Result(true, "저장 & 적용 완료", "다음 Claude Code 호출부터 반영됩니다");
 }
 

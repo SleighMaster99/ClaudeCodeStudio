@@ -104,7 +104,29 @@ function bgFor(type) {
   }
 }
 
-var state = { rows: [] };
+// 테마를 로드 직후 적용 (셸 설정과 같은 출처 localStorage 공유 — 늦은 주입으로 인한 깜빡임 방지)
+try {
+  var __t = JSON.parse(localStorage.getItem("ccs.ui.settings.v1"));
+  document.documentElement.setAttribute("data-theme", (__t && __t.theme === "dark") ? "dark" : "light");
+} catch (_) {}
+
+// 표시 옵션 (config.json "options" — StatusLine.ps1 이 소비, shell 은 적용 시 C++ 이 사용)
+function normalizeOptions(o) {
+  var out = { bar_width: 10, warn_pct: 50, crit_pct: 80, icon_set: "emoji", shell: "powershell" };
+  if (o) {
+    var bw = Math.round(+o.bar_width);
+    if (bw >= 4 && bw <= 40) out.bar_width = bw;
+    var w = Math.round(+o.warn_pct), c = Math.round(+o.crit_pct);
+    if (w >= 1 && w <= 99) out.warn_pct = w;
+    if (c >= 2 && c <= 100) out.crit_pct = c;
+    if (out.warn_pct >= out.crit_pct) out.warn_pct = out.crit_pct - 1;
+    if (o.icon_set === "nerd") out.icon_set = "nerd";
+    if (o.shell === "pwsh") out.shell = "pwsh";
+  }
+  return out;
+}
+
+var state = { rows: [], options: normalizeOptions(null) };
 var $ = function (id) { return document.getElementById(id); };
 
 function send(cmd, config) {
@@ -262,14 +284,38 @@ function handleDrop(e, ri, at) {
 }
 
 function collectConfig() {
+  readOptControls();
   return {
     rows: state.rows.map(function (row) {
       return row.map(function (it) {
         return (it.value != null) ? { type: it.type, value: it.value } : { type: it.type };
       });
-    })
+    }),
+    options: state.options
   };
 }
+
+// ----- 표시 옵션 컨트롤 -----
+function syncOptControls() {
+  $("optBarW").value = state.options.bar_width;
+  $("optWarn").value = state.options.warn_pct;
+  $("optCrit").value = state.options.crit_pct;
+  $("optIcon").value = state.options.icon_set;
+  $("optShell").value = state.options.shell;
+}
+function readOptControls() {
+  state.options = normalizeOptions({
+    bar_width: $("optBarW").value,
+    warn_pct: $("optWarn").value,
+    crit_pct: $("optCrit").value,
+    icon_set: $("optIcon").value,
+    shell: $("optShell").value
+  });
+  syncOptControls();   // 클램프된 값을 입력칸에 되돌려 표시
+}
+["optBarW", "optWarn", "optCrit", "optIcon", "optShell"].forEach(function (id) {
+  $(id).addEventListener("change", readOptControls);
+});
 
 function handle(msg) {
   if (msg.type === "config") {
@@ -279,6 +325,8 @@ function handle(msg) {
         return (it.value != null) ? { type: it.type, value: it.value } : { type: it.type };
       });
     });
+    state.options = normalizeOptions(msg.config && msg.config.options);
+    syncOptControls();
     renderRows();
   } else if (msg.type === "result") {
     showToast(msg.message + (msg.detail ? " — " + msg.detail : ""), msg.ok);
