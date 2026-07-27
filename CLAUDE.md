@@ -1,8 +1,12 @@
 # ClaudeCodeStudio
 
-Claude Code 설정 관리 Windows 통합 앱 (C++ + WebView2). 좌측 탭 2개:
+Claude Code 설정 관리 Windows 통합 앱 (C++ + WebView2). 좌측 탭 3개:
 - **설정 동기화** — 글로벌 `~/.claude` 를 git 으로 서버 동기화 (`SyncClaudeCodeSetting` 모듈)
 - **상태바 설정** — statusLine 레이아웃(`config.json`) 편집 (`ClaudeCodeStatusBar` 모듈)
+- **⚙ 설정** — 셸이 직접 소유(모듈 아님). 카테고리 탭(일반/화면/동기화) + 전 카테고리 검색.
+  일반=시작 탭·창 크기, 화면=테마·글자 크기·글꼴, 동기화=자동 새로고침·시작 시 원격 확인·이력 개수·커밋 메시지 형식·기본 저장소 URL.
+  값은 웹 `localStorage`(`ccs.ui.settings.v1` / `ccs.sync.settings.v1`)에 저장되고,
+  창 크기만 C++ 이 `%LOCALAPPDATA%\ClaudeCodeStudio\window_size.txt` 에 기록한다(`CCSTUDIO_STATE_DIR` 로 오버라이드).
 
 statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). 앱은 번들 + 설정만 관리.
 
@@ -17,7 +21,8 @@ statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). �
 | `SyncClaudeCodeSetting/` | dll | 동기화 모듈 (`sync.cpp`: git status/log/pull/push + 초기 설정) |
 | `ClaudeCodeStatusBar/` | dll | 상태바 모듈 (`statusbar.cpp`: config.json I/O + settings.json apply) |
 | `shared/module_api.h` | 헤더 | 모듈 C 계약 (`Module_Info/Init/Handle`, `PostToUiFn`) |
-| `StatusLine.ps1`, `config.json`, `usage_config.json` | 런타임 | statusLine 렌더러 + 레이아웃 + 한도 |
+| `StatusLine.ps1`, `config.json` | 런타임 | statusLine 렌더러 + 레이아웃(`rows`)/표시 옵션(`options`) |
+| `usage_config.json` | (미사용) | 플랜 한도 오버라이드용 파일. `Get-PlanLimits` 가 정의만 되어 있고 호출되지 않아 **현재 렌더에 영향 없음** |
 
 각 모듈 dll 은 자기 `web/` UI(HTML/JS)를 소유하고, 빌드 시 `bin/Release/web/<모듈>/` 로 복사된다.
 
@@ -56,10 +61,13 @@ statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). �
 ## 아이콘 시스템
 
 `icon_*` 는 같은 카테고리 항목을 한 줄에 묶을 때 쓰는 독립 항목 (예: `ctx_bar`+`ctx_pct` 줄에 `icon_ctx` 하나).
-- `StatusLine.ps1` 의 `$script:Icons` 해시테이블에 `<key> → 글리프` 매핑.
+- `StatusLine.ps1` 에 세트 **두 개**: `$script:Icons`(이모지, 기본) / `$script:IconsNerd`(Nerd Font).
+  `config.json` 의 `options.icon_set` 이 `nerd` 면 시작 시 `$script:Icons = $script:IconsNerd` 로 교체된다.
 - `switch` 의 `{ $_ -like 'icon_*' }` 케이스가 키 잘라 조회 후 출력.
-- 새 아이콘: `$script:Icons` 추가 + `app.js` `CATALOG` 에 `icon_<key>`(cat="아이콘").
-- 기본 글리프는 이모지 (폰트 의존 없음). Nerd Font 로 바꾸려면 `$script:Icons` 만 교체.
+- 새 아이콘: **두 세트 모두** 추가 + `app.js` `CATALOG` 에 `icon_<key>`(cat="아이콘").
+  한쪽만 넣으면 그 세트를 쓰는 사용자에게만 빈칸으로 보인다.
+- 이모지는 폰트 의존이 없고, Nerd 글리프는 터미널 폰트가 Nerd Font 일 때만 표시된다.
+  Nerd 코드포인트는 공식 `glyphnames.json` 으로 확인 후 추가한다(현재 세트는 `fa-*`/`cod-*` 계열).
 
 ### VS16 (Variation Selector-16, U+FE0F)
 
@@ -70,18 +78,22 @@ statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). �
 ## statusLine 적용
 
 **상태바 설정** 탭 **"저장 & 적용"**:
-1. `config.json` 저장 (`statusbar.cpp` `CmdApply`).
-2. `~/.claude/settings.json` 의 `statusLine` 을 `powershell -NoProfile -ExecutionPolicy Bypass -File <StatusLine.ps1>` 로 갱신 — **다른 필드 보존**(미니 JSON 파서로 statusLine 객체만 교체).
+1. `config.json` 저장 (`statusbar.cpp` `CmdApply`) — `PrettyJson` 으로 들여써서 기록(설치본 배포 + 수동 편집 대상).
+2. `~/.claude/settings.json` 의 `statusLine` 을 `<셸> -NoProfile -ExecutionPolicy Bypass -File <StatusLine.ps1>` 로 갱신 — **다른 필드 보존**(미니 JSON 파서로 statusLine 객체만 교체).
+
+`<셸>` 은 `options.shell` 로 정해진다. **기본 `pwsh`**(PowerShell 7), 명시 선택 시 `powershell`.
+pwsh 가 PATH 에 없으면 `powershell` 로 폴백하고 결과 메시지로 알린다 — 미설치 PC 에서 statusLine 이 비지 않게.
 
 수동 적용 시에도 동일한 `statusLine` 객체를 넣으면 된다.
 
 ## 디자인 제약
 
-- **Windows 전용**: PowerShell 5+ 런타임, C++/WebView2 앱.
+- **Windows 전용**: PowerShell 런타임(기본 pwsh 7, 미설치 시 내장 powershell 5), C++/WebView2 앱.
 - **모듈 경계 = C 문자열(JSON)**: STL 을 DLL 경계로 넘기지 않음 (ABI 안전 + 플러그인 친화).
 - **에러는 조용히**: `StatusLine.ps1` 은 `$ErrorActionPreference='SilentlyContinue'` + try/catch 로 statusLine 이 깨지지 않게.
 - **출력 인코딩 UTF-8** 고정 (한글/이모지 깨짐 방지).
-- **config.json 포맷 호환**: `rows` → `[{type, value?}]` 유지.
+- **config.json 포맷 호환**: `rows` → `[{type, value?}]` 유지. `options`(막대 폭·색 임계값·아이콘 세트·실행 셸)는
+  **선택 키** — 없으면 `StatusLine.ps1` 과 편집기가 각자 기본값을 쓴다(기존 config 그대로 동작).
 
 ## Git 규칙
 
