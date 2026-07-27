@@ -176,6 +176,28 @@ body {
 button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; } }
 
+/* 원격 작업 진행 오버레이 — 화면 전체를 덮어 클릭을 차단한다 */
+.busy {
+  position:fixed; inset:0; z-index:100;
+  display:flex; align-items:center; justify-content:center;
+  background:color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter:blur(2px);
+}
+.busy[hidden] { display:none; }   /* [hidden] 이 display:flex 에 지지 않도록 */
+.busy-card {
+  min-width:250px; max-width:80%; padding:26px 30px; text-align:center;
+  background:var(--win); border:1px solid var(--line2); border-radius:12px;
+  box-shadow:0 18px 44px -20px rgba(0,0,0,.5);
+}
+.busy-spinner {
+  width:34px; height:34px; margin:0 auto 15px; border-radius:50%;
+  border:3px solid var(--line2); border-top-color:var(--accent);
+  animation:busySpin .8s linear infinite;
+}
+@keyframes busySpin { to { transform:rotate(360deg); } }
+.busy-title { font-family:var(--font-mono); font-size:0.9375rem; font-weight:600; color:var(--ink); }
+.busy-desc { margin-top:7px; font-size:0.78125rem; color:var(--ink2); }
+
 /* 초기 설정 (미설정 시) */
 .setup { flex:1; display:flex; align-items:center; justify-content:center; padding:24px; }
 .setup[hidden] { display:none; }   /* [hidden] 이 .setup 의 display:flex 에 지지 않도록 */

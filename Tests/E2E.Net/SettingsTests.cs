@@ -280,6 +280,39 @@ public class SettingsTests
         finally { try { Directory.Delete(baseDir, true); } catch { } }
     }
 
+    [TestMethod]
+    public void 동기화_진행_오버레이_클릭차단과_해제()
+    {
+        var (work, baseDir) = MakeSyncFixture(2);
+        try
+        {
+            using var app = CcsApp.Launch(claudeDir: work);
+            OpenModuleTab(app, "sync");
+            app.WaitForSelector("#busy", 8000);
+
+            // 평상시에는 숨겨져 있다
+            Assert.IsFalse(IsShown(app, "#busy"), "대기 상태: 오버레이 숨김");
+
+            // 진행 중 상태를 만들면 화면 전체를 덮어 버튼 클릭이 오버레이에 가로막힌다
+            app.Js.ExecuteScript("document.getElementById('busy').hidden = false;");
+            Assert.IsTrue(IsShown(app, "#busy"), "진행 중: 오버레이 노출");
+            bool blocked = (bool)app.Js.ExecuteScript(@"
+                var b = document.getElementById('pushBtn').getBoundingClientRect();
+                var el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+                var busy = document.getElementById('busy');
+                return el === busy || busy.contains(el);");
+            Assert.IsTrue(blocked, "반영 버튼 위치의 클릭이 오버레이에 차단됨");
+
+            // 실제 원격 작업을 돌리고 나면 응답 수신과 함께 다시 해제된다
+            app.Js.ExecuteScript("document.getElementById('busy').hidden = true;");
+            app.Driver.FindElement(By.Id("refreshBtn")).Click();
+            bool released = CcsApp.WaitUntil(() => !IsShown(app, "#busy"), v => v, 15000);
+            Assert.IsTrue(released, "작업 완료 후 오버레이 해제");
+            Assert.IsTrue(app.Driver.FindElement(By.Id("refreshBtn")).Enabled, "작업 후 조작 가능");
+        }
+        finally { try { Directory.Delete(baseDir, true); } catch { } }
+    }
+
     // ---------- 설정 탭 카테고리 / 검색 ----------
     private static bool IsShown(CcsApp app, string css)
     {

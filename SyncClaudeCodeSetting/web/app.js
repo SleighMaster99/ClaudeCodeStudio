@@ -10,7 +10,41 @@ try {
   document.documentElement.setAttribute("data-theme", (__t && __t.theme === "dark") ? "dark" : "light");
 } catch (_) {}
 
+// 시간이 걸리는 원격 작업 — 진행 중 오버레이로 화면을 덮어 중복 실행을 막는다.
+// (status/log 같은 즉시 응답 명령은 대상 아님)
+const BUSY = {
+  pull:      { title: "서버에서 가져오는 중…",    desc: "서버 설정을 이 PC 에 적용합니다" },
+  push:      { title: "서버에 반영하는 중…",      desc: "커밋 후 업로드합니다" },
+  refresh:   { title: "서버 상태를 확인하는 중…", desc: "원격에서 최신 정보를 가져옵니다" },
+  bootstrap: { title: "초기 설정 중…",            desc: "저장소를 준비하고 서버 설정을 가져옵니다" }
+};
+let busyCmd = null;
+let busyTimer = null;
+
+function showBusy(cmd) {
+  const t = BUSY[cmd];
+  if (!t) return;
+  busyCmd = cmd;
+  $("busyTitle").textContent = t.title;
+  $("busyDesc").textContent = t.desc;
+  $("busy").hidden = false;
+  clearTimeout(busyTimer);
+  // 안전장치 — 응답이 오지 않아도 화면이 영구히 잠기지 않게 한다
+  busyTimer = setTimeout(() => {
+    if (!busyCmd) return;
+    hideBusy();
+    showToast("응답이 지연되고 있습니다. 새로고침으로 상태를 확인하세요", false);
+  }, 180000);
+}
+function hideBusy() {
+  busyCmd = null;
+  clearTimeout(busyTimer);
+  busyTimer = null;
+  $("busy").hidden = true;
+}
+
 function send(cmd, arg) {
+  if (BUSY[cmd]) showBusy(cmd);
   window.parent.postMessage({ module: "sync", cmd: cmd, arg: arg || "" }, "*");
 }
 
@@ -54,7 +88,8 @@ function applyAutoRefresh() {
   autoTimer = null;
   if (appSettings.autoMin > 0) {
     autoTimer = setInterval(function () {
-      if (isConfigured) send("refresh");   // 미설정(초기 설정 화면)이면 건너뜀
+      // 미설정(초기 설정 화면)이거나 다른 작업이 진행 중이면 건너뜀
+      if (isConfigured && !busyCmd) send("refresh");
     }, appSettings.autoMin * 60000);
   }
 }
@@ -234,10 +269,12 @@ function handle(msg) {
       if (lastLog) renderLog(lastLog);   // 태그 위치가 미커밋 여부에 의존 → 이력 재렌더
       break;
     case "log":
+      hideBusy();          // 모든 원격 작업이 마지막에 log 를 보낸다
       lastLog = msg;
       renderLog(msg);
       break;
     case "result":
+      hideBusy();          // 실패로 조기 종료(log 미수신)하는 경로까지 확실히 해제
       showToast(msg.message + (msg.detail ? " — " + msg.detail : ""), msg.ok);
       // 부트스트랩 등 결과 직후, 초기 설정 화면이면 상태를 다시 조회(성공 시 전환/실패 시 버튼 복구)
       if (!$("setup").hidden) send("status");
