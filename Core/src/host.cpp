@@ -92,19 +92,27 @@ static void SaveSize(int w, int h) {
     if (f) f << w << "x" << h;
 }
 
+// 창 크기를 작업영역 안으로 줄인다 (저장값 자체는 바꾸지 않는다).
+static void ClampToRect(const RECT& work, int& w, int& h) {
+    int aw = work.right - work.left, ah = work.bottom - work.top;
+    if (aw > 0 && w > aw) w = aw;
+    if (ah > 0 && h > ah) h = ah;
+}
+// 창이 아직 없는 시작 시점 — 주 모니터 작업영역 기준으로 줄인다.
+// (창 생성 위치가 CW_USEDEFAULT 라 주 모니터가 기준이 된다)
+static void ClampToPrimaryWorkArea(int& w, int& h) {
+    RECT work{};
+    if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0)) ClampToRect(work, w, h);
+}
+
 // 설정 탭의 해상도 선택 → 창 크기 즉시 변경 + 저장(다음 실행 초기 크기).
 // 저장은 선택값 그대로, 화면 적용만 현재 모니터 작업영역에 맞춰 줄인다.
 static void ResizeWindowTo(int w, int h) {
     if (!g_hwnd) return;
     int cw = w, ch = h;
-    HMONITOR mon = MonitorFromWindow(g_hwnd, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi{ sizeof(mi) };
-    if (GetMonitorInfoW(mon, &mi)) {
-        int aw = mi.rcWork.right - mi.rcWork.left;
-        int ah = mi.rcWork.bottom - mi.rcWork.top;
-        if (cw > aw) cw = aw;
-        if (ch > ah) ch = ah;
-    }
+    if (GetMonitorInfoW(MonitorFromWindow(g_hwnd, MONITOR_DEFAULTTONEAREST), &mi))
+        ClampToRect(mi.rcWork, cw, ch);
     if (IsZoomed(g_hwnd)) ShowWindow(g_hwnd, SW_RESTORE);
     SetWindowPos(g_hwnd, nullptr, 0, 0, cw, ch, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     SaveSize(w, h);
@@ -264,7 +272,8 @@ extern "C" CORE_API int Core_Run(HINSTANCE hInst, int nCmdShow) {
     RegisterClassExW(&wc);
 
     int winW = 0, winH = 0;
-    LoadSavedSize(winW, winH);   // 설정 탭 해상도 선택값 (없으면 1920x1080)
+    LoadSavedSize(winW, winH);        // 설정 탭 해상도 선택값 (없으면 1920x1080)
+    ClampToPrimaryWorkArea(winW, winH);   // 더 작은 화면으로 옮겨도 창이 화면 밖으로 나가지 않게
     g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"ClaudeCodeStudio",
         WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, winW, winH,
         nullptr, nullptr, hInst, nullptr);

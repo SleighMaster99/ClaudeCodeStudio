@@ -1,1 +1,220 @@
-{"rows":[[{"type":"icon_version"},{"type":"space"},{"type":"version"},{"type":"space"},{"type":"sep_pipe"},{"type":"space"},{"type":"icon_model"},{"type":"space"},{"type":"model"},{"type":"space"},{"type":"sep_pipe"},{"type":"space"},{"type":"ctx_size"},{"type":"space"},{"type":"sep_slash"},{"type":"space"},{"type":"effort"},{"type":"space"}],[{"type":"icon_dir"},{"type":"space"},{"type":"project_dir"}],[{"type":"icon_user"},{"type":"space"},{"type":"git_user"},{"type":"space"},{"type":"sep_pipe"},{"type":"space"},{"type":"icon_git"},{"type":"space"},{"type":"git_branch"}],[{"type":"icon_ctx"},{"type":"space"},{"type":"ctx_bar"},{"type":"space"},{"type":"ctx_pct"},{"type":"space"},{"type":"ctx_tokens"},{"type":"space"},{"type":"sep_pipe"},{"type":"space"},{"type":"icon_h5"},{"type":"space"},{"type":"h5_bar"},{"type":"space"},{"type":"h5_pct"},{"type":"space"},{"type":"h5_remain"},{"type":"space"},{"type":"sep_pipe"},{"type":"space"},{"type":"icon_week"},{"type":"space"},{"type":"week_bar"},{"type":"space"},{"type":"week_pct"},{"type":"space"},{"type":"week_remain"},{"type":"space"},{"type":"sep_pipe"},{"type":"space"},{"type":"icon_fable"},{"type":"space"},{"type":"fable_bar"},{"type":"space"},{"type":"fable_pct"},{"type":"space"},{"type":"fable_remain"}]],"options":{"bar_width":10,"warn_pct":50,"crit_pct":80,"icon_set":"emoji","shell":"pwsh"}}
+{
+  "rows": [
+    [
+      {
+        "type": "icon_version"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "version"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_pipe"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "icon_model"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "model"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_pipe"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "ctx_size"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_slash"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "effort"
+      },
+      {
+        "type": "space"
+      }
+    ],
+    [
+      {
+        "type": "icon_dir"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "project_dir"
+      }
+    ],
+    [
+      {
+        "type": "icon_user"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "git_user"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_pipe"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "icon_git"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "git_branch"
+      }
+    ],
+    [
+      {
+        "type": "icon_ctx"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "ctx_bar"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "ctx_pct"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "ctx_tokens"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_pipe"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "icon_h5"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "h5_bar"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "h5_pct"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "h5_remain"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_pipe"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "icon_week"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "week_bar"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "week_pct"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "week_remain"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "sep_pipe"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "icon_fable"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "fable_bar"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "fable_pct"
+      },
+      {
+        "type": "space"
+      },
+      {
+        "type": "fable_remain"
+      }
+    ]
+  ],
+  "options": {
+    "bar_width": 10,
+    "warn_pct": 50,
+    "crit_pct": 80,
+    "icon_set": "emoji",
+    "shell": "pwsh"
+  }
+}

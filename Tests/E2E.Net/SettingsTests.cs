@@ -34,6 +34,24 @@ public class SettingsTests
             "arguments[0].dispatchEvent(new Event('change'));", el, value);
     }
 
+    /// <summary>pwsh(PowerShell 7) 가 PATH 에 있는지 — 모듈의 폴백 판단과 같은 기준.</summary>
+    private static bool PwshInstalled()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("where", "pwsh")
+            {
+                RedirectStandardOutput = true, RedirectStandardError = true,
+                UseShellExecute = false, CreateNoWindow = true
+            };
+            using var p = Process.Start(psi)!;
+            p.StandardOutput.ReadToEnd();
+            p.WaitForExit(5000);
+            return p.ExitCode == 0;
+        }
+        catch { return false; }
+    }
+
     private static void OpenSettingsTab(CcsApp app)
     {
         app.Driver.SwitchTo().DefaultContent();
@@ -134,11 +152,13 @@ public class SettingsTests
                 t => t.Contains("저장했습니다"), 8000);
             Assert.IsTrue(saveToast.Contains("저장했습니다"), $"저장 결과 토스트 (실제: '{saveToast}')");
 
+            // 저장 형식은 들여쓴 JSON (설치본에 배포되고 손으로도 고치는 파일)
             string cfg = File.ReadAllText(Path.Combine(root, "config.json"));
-            StringAssert.Contains(cfg, "\"bar_width\":16", "막대 폭 기록");
-            StringAssert.Contains(cfg, "\"warn_pct\":30", "주의 임계값 기록");
-            StringAssert.Contains(cfg, "\"crit_pct\":70", "위험 임계값 기록");
-            StringAssert.Contains(cfg, "\"icon_set\":\"nerd\"", "아이콘 세트 기록");
+            StringAssert.Contains(cfg, "\"bar_width\": 16", "막대 폭 기록");
+            StringAssert.Contains(cfg, "\"warn_pct\": 30", "주의 임계값 기록");
+            StringAssert.Contains(cfg, "\"crit_pct\": 70", "위험 임계값 기록");
+            StringAssert.Contains(cfg, "\"icon_set\": \"nerd\"", "아이콘 세트 기록");
+            StringAssert.Contains(cfg, "\n", "사람이 읽을 수 있게 여러 줄로 저장");
 
             // 저장&적용 → settings.json statusLine 이 기본 셸(pwsh)로, 기존 필드는 보존
             app.Driver.FindElement(By.Id("applyBtn")).Click();
@@ -147,9 +167,11 @@ public class SettingsTests
                 t => t.Contains("적용 완료"), 8000);
             Assert.IsTrue(applyToast.Contains("적용 완료"), $"적용 결과 토스트 (실제: '{applyToast}')");
 
+            // 기본 셸은 pwsh 이지만, pwsh 가 없는 PC 에서는 powershell 로 폴백된다
             string s = File.ReadAllText(settingsPath);
+            string expected = PwshInstalled() ? "pwsh -NoProfile" : "powershell -NoProfile";
             StringAssert.Contains(s, "statusLine", "settings.json 에 statusLine 기록");
-            StringAssert.Contains(s, "pwsh -NoProfile", "기본 실행 셸 pwsh 반영");
+            StringAssert.Contains(s, expected, $"기본 실행 셸 반영 (기대: {expected})");
             StringAssert.Contains(s, "\"model\"", "settings.json 기존 필드 보존");
 
             // powershell 로 바꿔 적용하면 그쪽으로 기록된다 (양방향 확인)
@@ -228,9 +250,10 @@ public class SettingsTests
                 () => app.Driver.FindElements(By.CssSelector(".hist-row")).Count, n => n == 12, 8000);
             Assert.AreEqual(12, n12, "이력 12건 표시");
 
-            // 커밋 메시지 형식: {host}/{time} 치환된 제목으로 push 되는지 bare 원격에서 확인
+            // 커밋 메시지 형식: 치환 + 인자 인용 확인.
+            // 따옴표를 포함하고 백슬래시로 끝나는 값(경로 표기)이라, 인용이 부실하면 제목이 깨진다.
             OpenSettingsTab(app);
-            SetInput(app, "#syncCommitMsg", "sync: {host} / {time}");
+            SetInput(app, "#syncCommitMsg", "sync {host} \"D:\\Repo\\\"");
             File.WriteAllText(Path.Combine(work, "CLAUDE.md"), "e2e change");
             OpenModuleTab(app, "sync");   // iframe 내부 클릭은 pane 활성화 필요
             app.Driver.FindElement(By.Id("refreshBtn")).Click();   // 상태 갱신 → push 활성화
@@ -242,10 +265,10 @@ public class SettingsTests
 
             string bare = Path.Combine(baseDir, "remote.git");
             string subject = CcsApp.WaitUntil(
-                () => Git("log -1 --pretty=%s main", bare).Trim(), s => s.StartsWith("sync: "), 10000);
-            string expectedPrefix = $"sync: {Environment.MachineName} / ";
-            Assert.IsTrue(subject.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase),
-                $"커밋 메시지 형식 치환 (실제: '{subject}')");
+                () => Git("log -1 --pretty=%s main", bare).Trim(), s => s.StartsWith("sync "), 10000);
+            string expected = $"sync {Environment.MachineName} \"D:\\Repo\\\"";
+            Assert.IsTrue(string.Equals(subject, expected, StringComparison.OrdinalIgnoreCase),
+                $"커밋 메시지 치환 + 따옴표·백슬래시 보존 (기대: '{expected}', 실제: '{subject}')");
         }
         finally { try { Directory.Delete(baseDir, true); } catch { } }
     }

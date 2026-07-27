@@ -141,6 +141,22 @@ static std::string ReplaceAll(std::string s, const std::string& from, const std:
     while ((p = s.find(from, p)) != std::string::npos) { s.replace(p, from.size(), to); p += to.size(); }
     return s;
 }
+// 명령줄 인자 하나를 Windows 규칙(CommandLineToArgvW)대로 인용한다.
+// 따옴표는 \" 로, 따옴표 직전의 백슬래시 연속은 두 배로 늘린다 — 이렇게 해야
+// 값이 \ 로 끝나거나 " 를 포함해도 인자 경계가 깨지지 않는다.
+static std::string QuoteArg(const std::string& s) {
+    std::string out = "\"";
+    size_t slashes = 0;
+    for (char c : s) {
+        if (c == '\\') { ++slashes; out += c; continue; }
+        if (c == '"') { out.append(slashes + 1, '\\'); out += '"'; }
+        else out += c;
+        slashes = 0;
+    }
+    out.append(slashes, '\\');   // 닫는 따옴표 앞의 백슬래시도 두 배로
+    out += '"';
+    return out;
+}
 static std::string HostName() {
     wchar_t buf[256]; DWORD n = 256;
     if (GetComputerNameW(buf, &n)) return Narrow(std::wstring(buf, n));
@@ -268,12 +284,12 @@ static void CmdPush() {
     if (!Trim(dirty).empty()) {
         std::string tmp;
         Git(L"add -A", tmp);
-        // 커밋 메시지 형식({host}/{time} 치환). 따옴표는 -m 인자 보호를 위해 치환.
+        // 커밋 메시지 형식({host}/{time} 치환). 인용은 QuoteArg 가 담당하므로
+        // 값에 따옴표·백슬래시(예: 경로)가 들어가도 그대로 전달된다.
         std::string tpl = g_commitTpl.empty() ? kDefaultCommitTpl : g_commitTpl;
         std::string msg = ReplaceAll(ReplaceAll(tpl, "{host}", HostName()), "{time}", NowStamp());
-        for (auto& c : msg) if (c == '"') c = '\'';
         if (Trim(msg).empty()) msg = ReplaceAll(ReplaceAll(std::string(kDefaultCommitTpl), "{host}", HostName()), "{time}", NowStamp());
-        Git(L"commit -m \"" + Widen(msg) + L"\"", tmp);
+        Git(L"commit -m " + Widen(QuoteArg(msg)), tmp);
     }
     std::string out;
     DWORD code = Git(L"push origin main", out);
@@ -293,8 +309,8 @@ static void CmdSetRemote(const std::string& url) {
     if (!IsConfigured()){ Result(false, "먼저 초기 설정이 필요합니다", ""); CmdStatus(); return; }
     std::string tmp;
     DWORD code = (Git(L"remote get-url origin", tmp) == 0)
-        ? Git(L"remote set-url origin " + Widen(u), tmp)
-        : Git(L"remote add origin "     + Widen(u), tmp);
+        ? Git(L"remote set-url origin " + Widen(QuoteArg(u)), tmp)
+        : Git(L"remote add origin "     + Widen(QuoteArg(u)), tmp);
     if (code != 0) { Result(false, "서버 주소 변경 실패", Trim(tmp)); CmdStatus(); return; }
     Result(true, "서버 주소를 변경했습니다", u);
     CmdStatus();
@@ -325,7 +341,7 @@ static void CmdBootstrap(const std::string& url) {
 
     if (Git(L"init -b main", tmp) != 0) { Result(false, "저장소 초기화(git init) 실패", Trim(tmp)); return; }
     Git(L"remote remove origin", tmp);   // 잔여 origin 제거(있으면)
-    if (Git(L"remote add origin " + Widen(repoUrl), tmp) != 0) { Result(false, "원격(origin) 추가 실패", Trim(tmp)); return; }
+    if (Git(L"remote add origin " + Widen(QuoteArg(repoUrl)), tmp) != 0) { Result(false, "원격(origin) 추가 실패", Trim(tmp)); return; }
     if (Git(L"fetch origin", out) != 0) { Result(false, "원격에서 가져오기 실패 (저장소 URL/로그인 확인)", Trim(out)); return; }
 
     BackupExisting();
