@@ -118,6 +118,10 @@ public class SettingsTests
             app.SwitchToModule("statusbar");
             app.WaitForSelector("#optBarW", 8000);
 
+            // 설정이 없는 상태의 기본 실행 셸은 pwsh
+            Assert.AreEqual("pwsh", app.Driver.FindElement(By.Id("optShell")).GetAttribute("value"),
+                "기본 실행 셸 = pwsh");
+
             // 옵션 변경 → 저장. 토스트는 C++ 가 파일 쓰기를 마친 뒤 표시되므로,
             // 토스트 확인 후 1회 읽기 — 쓰는 중 폴링으로 인한 파일 공유 레이스를 없앤다.
             SetInput(app, "#optBarW", "16");
@@ -136,8 +140,7 @@ public class SettingsTests
             StringAssert.Contains(cfg, "\"crit_pct\":70", "위험 임계값 기록");
             StringAssert.Contains(cfg, "\"icon_set\":\"nerd\"", "아이콘 세트 기록");
 
-            // 실행 셸 pwsh 선택 → 저장&적용 → settings.json statusLine 이 pwsh 로, 기존 필드 보존
-            SetSelect(app, "#optShell", "pwsh");
+            // 저장&적용 → settings.json statusLine 이 기본 셸(pwsh)로, 기존 필드는 보존
             app.Driver.FindElement(By.Id("applyBtn")).Click();
             string applyToast = CcsApp.WaitUntil(
                 () => { try { return app.Driver.FindElement(By.Id("toast")).Text; } catch { return ""; } },
@@ -146,8 +149,16 @@ public class SettingsTests
 
             string s = File.ReadAllText(settingsPath);
             StringAssert.Contains(s, "statusLine", "settings.json 에 statusLine 기록");
-            StringAssert.Contains(s, "pwsh -NoProfile", "실행 셸 pwsh 반영");
+            StringAssert.Contains(s, "pwsh -NoProfile", "기본 실행 셸 pwsh 반영");
             StringAssert.Contains(s, "\"model\"", "settings.json 기존 필드 보존");
+
+            // powershell 로 바꿔 적용하면 그쪽으로 기록된다 (양방향 확인)
+            SetSelect(app, "#optShell", "powershell");
+            app.Driver.FindElement(By.Id("applyBtn")).Click();
+            bool switched = CcsApp.WaitUntil(
+                () => { try { return File.ReadAllText(settingsPath).Contains("powershell -NoProfile"); } catch { return false; } },
+                v => v, 8000);
+            Assert.IsTrue(switched, "powershell 선택 시 해당 셸로 기록");
         }
         finally
         {

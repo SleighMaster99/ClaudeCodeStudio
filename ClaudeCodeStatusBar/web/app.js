@@ -112,7 +112,7 @@ try {
 
 // 표시 옵션 (config.json "options" — StatusLine.ps1 이 소비, shell 은 적용 시 C++ 이 사용)
 function normalizeOptions(o) {
-  var out = { bar_width: 10, warn_pct: 50, crit_pct: 80, icon_set: "emoji", shell: "powershell" };
+  var out = { bar_width: 10, warn_pct: 50, crit_pct: 80, icon_set: "emoji", shell: "pwsh" };
   if (o) {
     var bw = Math.round(+o.bar_width);
     if (bw >= 4 && bw <= 40) out.bar_width = bw;
@@ -121,7 +121,7 @@ function normalizeOptions(o) {
     if (c >= 2 && c <= 100) out.crit_pct = c;
     if (out.warn_pct >= out.crit_pct) out.warn_pct = out.crit_pct - 1;
     if (o.icon_set === "nerd") out.icon_set = "nerd";
-    if (o.shell === "pwsh") out.shell = "pwsh";
+    if (o.shell === "powershell") out.shell = "powershell";
   }
   return out;
 }

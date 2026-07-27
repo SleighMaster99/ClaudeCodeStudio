@@ -173,9 +173,9 @@ static std::string ScriptArg() {
 }
 
 // settings.json 의 statusLine 값(객체)만 새 값으로 교체/삽입, 나머지 필드 보존.
-// shell: "pwsh" 면 PowerShell 7, 그 외는 Windows PowerShell 5 (config options.shell).
+// shell: "powershell" 이면 Windows 내장 PowerShell 5, 그 외는 기본값인 pwsh (config options.shell).
 static void ApplyStatusLine(const std::string& shell) {
-    std::string exe = (shell == "pwsh") ? "pwsh" : "powershell";
+    std::string exe = (shell == "powershell") ? "powershell" : "pwsh";
     std::string rawCmd = exe + " -NoProfile -ExecutionPolicy Bypass -File " + ScriptArg();
     std::string obj = "{ \"type\": \"command\", \"command\": \"" + JsonEsc(rawCmd) + "\" }";
 
@@ -214,14 +214,14 @@ static void CmdApply(const std::string& req) {
     std::string cfg = JsonGetObject(req, "config");
     if (cfg.empty()) { Result(false, "적용할 레이아웃이 없습니다", ""); return; }
     std::string shell = JsonGetStr(JsonGetObject(cfg, "options"), "shell");
-    if (shell == "pwsh" && !PwshAvailable()) {
-        Result(false, "pwsh(PowerShell 7)를 찾을 수 없습니다",
-               "PowerShell 7 설치 후 다시 적용하거나 실행 셸을 powershell 로 바꾸세요");
-        return;
-    }
+    // 기본은 pwsh(PowerShell 7). 미설치 PC 에서는 Windows 내장 powershell 로 폴백해
+    // statusLine 이 아예 표시되지 않는 상황을 막는다.
+    bool fellBack = (shell != "powershell") && !PwshAvailable();
     if (!WriteFileUtf8(g_configPath, cfg)) { Result(false, "config.json 저장 실패", Narrow(g_configPath)); return; }
-    ApplyStatusLine(shell);
-    Result(true, "저장 & 적용 완료", "다음 Claude Code 호출부터 반영됩니다");
+    ApplyStatusLine(fellBack ? "powershell" : shell);
+    Result(true, "저장 & 적용 완료",
+           fellBack ? "pwsh 를 찾지 못해 powershell 로 적용했습니다"
+                    : "다음 Claude Code 호출부터 반영됩니다");
 }
 
 // ---------- module exports ----------
