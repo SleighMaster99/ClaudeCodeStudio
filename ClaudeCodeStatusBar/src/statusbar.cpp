@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <cctype>
 
 #include "module_api.h"
 
@@ -94,6 +95,48 @@ static std::string JsonGetObject(const std::string& json, const std::string& key
     return "";
 }
 
+// JSON 문자열을 들여쓴 형태로 정리한다(파싱 없이 토큰 단위).
+// UI 는 한 줄로 직렬화한 config 를 보내는데, config.json 은 설치본에 배포되고 손으로도
+// 고치는 파일이라 사람이 읽을 수 있는 형태로 저장한다. 빈 객체/배열은 한 줄로 둔다.
+static std::string PrettyJson(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() * 2);
+    int depth = 0;
+    bool inStr = false;
+    auto newline = [&](int d) { out += '\n'; out.append((size_t)d * 2, ' '); };
+
+    for (size_t i = 0; i < s.size(); ++i) {
+        char c = s[i];
+        if (inStr) {
+            out += c;
+            if (c == '\\' && i + 1 < s.size()) out += s[++i];   // 이스케이프 쌍은 통째로
+            else if (c == '"') inStr = false;
+            continue;
+        }
+        switch (c) {
+            case '"': inStr = true; out += c; break;
+            case '{': case ']': case '[': case '}': {
+                if (c == '{' || c == '[') {
+                    char close = (c == '{') ? '}' : ']';
+                    size_t j = i + 1;
+                    while (j < s.size() && std::isspace((unsigned char)s[j])) ++j;
+                    if (j < s.size() && s[j] == close) { out += c; out += close; i = j; break; }
+                    out += c; newline(++depth);
+                } else {
+                    if (depth > 0) --depth;
+                    newline(depth); out += c;
+                }
+                break;
+            }
+            case ',': out += c; newline(depth); break;
+            case ':': out += ": "; break;
+            default:  if (!std::isspace((unsigned char)c)) out += c; break;
+        }
+    }
+    out += '\n';
+    return out;
+}
+
 static std::string ReadFileUtf8(const std::wstring& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return "";
@@ -147,8 +190,14 @@ static void CmdLoad() {
 static void CmdSave(const std::string& req) {
     std::string cfg = JsonGetObject(req, "config");
     if (cfg.empty()) { Result(false, "저장할 레이아웃이 없습니다", ""); return; }
-    if (!WriteFileUtf8(g_configPath, cfg)) { Result(false, "config.json 저장 실패", Narrow(g_configPath)); return; }
+    if (!WriteFileUtf8(g_configPath, PrettyJson(cfg))) { Result(false, "config.json 저장 실패", Narrow(g_configPath)); return; }
     Result(true, "레이아웃을 저장했습니다", "");
+}
+
+// pwsh(PowerShell 7)가 PATH 에 있는지 확인 — 없는데 pwsh 로 적용하면 statusLine 이 조용히 죽는다.
+static bool PwshAvailable() {
+    wchar_t buf[MAX_PATH];
+    return SearchPathW(nullptr, L"pwsh.exe", nullptr, MAX_PATH, buf, nullptr) > 0;
 }
 
 // StatusLine.ps1 경로를 statusLine command 인자로 변환한다.
@@ -167,8 +216,10 @@ static std::string ScriptArg() {
 }
 
 // settings.json 의 statusLine 값(객체)만 새 값으로 교체/삽입, 나머지 필드 보존.
-static void ApplyStatusLine() {
-    std::string rawCmd = "powershell -NoProfile -ExecutionPolicy Bypass -File " + ScriptArg();
+// shell: "powershell" 이면 Windows 내장 PowerShell 5, 그 외는 기본값인 pwsh (config options.shell).
+static void ApplyStatusLine(const std::string& shell) {
+    std::string exe = (shell == "powershell") ? "powershell" : "pwsh";
+    std::string rawCmd = exe + " -NoProfile -ExecutionPolicy Bypass -File " + ScriptArg();
     std::string obj = "{ \"type\": \"command\", \"command\": \"" + JsonEsc(rawCmd) + "\" }";
 
     std::string s = ReadFileUtf8(g_settingsPath);
@@ -205,9 +256,15 @@ static void ApplyStatusLine() {
 static void CmdApply(const std::string& req) {
     std::string cfg = JsonGetObject(req, "config");
     if (cfg.empty()) { Result(false, "적용할 레이아웃이 없습니다", ""); return; }
-    if (!WriteFileUtf8(g_configPath, cfg)) { Result(false, "config.json 저장 실패", Narrow(g_configPath)); return; }
-    ApplyStatusLine();
-    Result(true, "저장 & 적용 완료", "다음 Claude Code 호출부터 반영됩니다");
+    std::string shell = JsonGetStr(JsonGetObject(cfg, "options"), "shell");
+    // 기본은 pwsh(PowerShell 7). 미설치 PC 에서는 Windows 내장 powershell 로 폴백해
+    // statusLine 이 아예 표시되지 않는 상황을 막는다.
+    bool fellBack = (shell != "powershell") && !PwshAvailable();
+    if (!WriteFileUtf8(g_configPath, PrettyJson(cfg))) { Result(false, "config.json 저장 실패", Narrow(g_configPath)); return; }
+    ApplyStatusLine(fellBack ? "powershell" : shell);
+    Result(true, "저장 & 적용 완료",
+           fellBack ? "pwsh 를 찾지 못해 powershell 로 적용했습니다"
+                    : "다음 Claude Code 호출부터 반영됩니다");
 }
 
 // ---------- module exports ----------
@@ -216,7 +273,8 @@ MODULE_API const char* Module_Info() {
 }
 MODULE_API void Module_Init(PostToUiFn post) {
     g_post = post;
-    g_root = FindRoot();
+    std::wstring ro = EnvVar(L"CCSTUDIO_STATUSBAR_ROOT");   // 검증용 루트(config.json/StatusLine.ps1 위치) 오버라이드
+    g_root = ro.empty() ? FindRoot() : ro;
     g_configPath   = g_root + L"\\config.json";
     g_scriptPath   = g_root + L"\\StatusLine.ps1";
     std::wstring so = EnvVar(L"CCSTUDIO_SETTINGS_PATH");   // 검증용 settings 경로 오버라이드

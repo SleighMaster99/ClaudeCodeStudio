@@ -16,7 +16,6 @@
     </div>
     <div class="tb-controls">
       <button id="refreshBtn" class="tb-btn" title="원격에서 새로고침 (fetch)">⟳</button>
-      <button id="themeBtn" class="tb-btn" title="테마 전환">◐</button>
     </div>
   </header>
 
@@ -95,6 +94,15 @@
     <span class="sb-sep">·</span>
     <span id="repoUrlFoot" class="sb-repo">—</span>
   </footer>
+
+  <!-- 원격 작업(가져오기/반영/새로고침/초기 설정) 진행 중 화면을 덮어 중복 실행을 막는다 -->
+  <div id="busy" class="busy" hidden>
+    <div class="busy-card" role="status" aria-live="polite">
+      <div class="busy-spinner"></div>
+      <div id="busyTitle" class="busy-title">처리 중…</div>
+      <div id="busyDesc" class="busy-desc"></div>
+    </div>
+  </div>
 </div>
 <script src="app.js"></script>
 </body>

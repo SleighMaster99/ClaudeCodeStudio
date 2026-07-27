@@ -3,8 +3,95 @@
 // iframe 안에서 동작. C++ 호스트와는 부모(Core 셸)를 통해 중계로 통신한다.
 //   보내기: window.parent.postMessage({module,cmd,arg})  -> 부모가 chrome.webview 로 전달
 //   받기:   부모가 C++ 결과(JSON)를 이 iframe 으로 postMessage -> message 이벤트
+
+// 테마를 로드 직후 적용 (셸 설정과 같은 출처 localStorage 공유 — 늦은 주입으로 인한 깜빡임 방지)
+try {
+  var __t = JSON.parse(localStorage.getItem("ccs.ui.settings.v1"));
+  document.documentElement.setAttribute("data-theme", (__t && __t.theme === "dark") ? "dark" : "light");
+} catch (_) {}
+
+// 시간이 걸리는 원격 작업 — 진행 중 오버레이로 화면을 덮어 중복 실행을 막는다.
+// (status/log 같은 즉시 응답 명령은 대상 아님)
+const BUSY = {
+  pull:      { title: "서버에서 가져오는 중…",    desc: "서버 설정을 이 PC 에 적용합니다" },
+  push:      { title: "서버에 반영하는 중…",      desc: "커밋 후 업로드합니다" },
+  refresh:   { title: "서버 상태를 확인하는 중…", desc: "원격에서 최신 정보를 가져옵니다" },
+  bootstrap: { title: "초기 설정 중…",            desc: "저장소를 준비하고 서버 설정을 가져옵니다" }
+};
+let busyCmd = null;
+let busyTimer = null;
+
+function showBusy(cmd) {
+  const t = BUSY[cmd];
+  if (!t) return;
+  busyCmd = cmd;
+  $("busyTitle").textContent = t.title;
+  $("busyDesc").textContent = t.desc;
+  $("busy").hidden = false;
+  clearTimeout(busyTimer);
+  // 안전장치 — 응답이 오지 않아도 화면이 영구히 잠기지 않게 한다
+  busyTimer = setTimeout(() => {
+    if (!busyCmd) return;
+    hideBusy();
+    showToast("응답이 지연되고 있습니다. 새로고침으로 상태를 확인하세요", false);
+  }, 180000);
+}
+function hideBusy() {
+  busyCmd = null;
+  clearTimeout(busyTimer);
+  busyTimer = null;
+  $("busy").hidden = true;
+}
+
 function send(cmd, arg) {
+  if (BUSY[cmd]) showBusy(cmd);
   window.parent.postMessage({ module: "sync", cmd: cmd, arg: arg || "" }, "*");
+}
+
+// ----- 앱 설정 (셸 설정 탭이 저장, 여기서 소비) -----
+var SYNC_KEY = "ccs.sync.settings.v1";
+function normalizeSettings(s) {
+  var out = { autoMin: 0, startupFetch: false, histCount: 8, commitMsg: "", repoUrl: "" };
+  if (s) {
+    if ([1, 5, 15, 30].indexOf(+s.autoMin) >= 0) out.autoMin = +s.autoMin;
+    out.startupFetch = !!s.startupFetch;
+    if (s.histCount != null) out.histCount = Math.min(50, Math.max(1, Math.round(+s.histCount) || 8));
+    if (typeof s.commitMsg === "string") out.commitMsg = s.commitMsg;
+    if (typeof s.repoUrl === "string") out.repoUrl = s.repoUrl.trim();
+  }
+  return out;
+}
+function loadAppSettings() {
+  try { return normalizeSettings(JSON.parse(localStorage.getItem(SYNC_KEY))); }
+  catch (_) { return normalizeSettings(null); }
+}
+var appSettings = loadAppSettings();
+var isConfigured = null;   // 마지막 status 의 configured (자동 새로고침 가드)
+
+// 이력의 태그 위치가 status(미커밋 여부)에 의존하므로 두 메시지의 마지막 값을 함께 보관한다.
+var lastStatus = null;
+var lastLog = null;
+
+// C++ sync 모듈에 설정 전달 — 이후 log/push/bootstrap 명령부터 반영된다
+function sendConfigure() {
+  window.parent.postMessage({
+    module: "sync", cmd: "configure",
+    logCount: String(appSettings.histCount),
+    commitMsg: appSettings.commitMsg,
+    defaultRepo: appSettings.repoUrl
+  }, "*");
+}
+
+var autoTimer = null;
+function applyAutoRefresh() {
+  clearInterval(autoTimer);
+  autoTimer = null;
+  if (appSettings.autoMin > 0) {
+    autoTimer = setInterval(function () {
+      // 미설정(초기 설정 화면)이거나 다른 작업이 진행 중이면 건너뜀
+      if (isConfigured && !busyCmd) send("refresh");
+    }, appSettings.autoMin * 60000);
+  }
 }
 
 const $ = (id) => document.getElementById(id);
@@ -88,11 +175,48 @@ function renderStatus(s) {
   if (ahead === 0 && !dirty) $("pushSub").textContent = "반영할 변경 없음";
 }
 
+// 아직 커밋되지 않은 로컬 변경을 나타내는 이력 행.
+// 커밋 포인터(HEAD)가 서버와 같은 자리에 있어도 "이 PC 가 앞서 있다"를 태그 위치로 보이게 한다.
+function makeUncommittedRow(count) {
+  const li = document.createElement("li");
+  li.className = "hist-row uncommitted";
+
+  const time = document.createElement("span");
+  time.className = "hist-time";
+  time.textContent = "미반영";
+
+  const desc = document.createElement("span");
+  desc.className = "hist-desc";
+  const subj = document.createElement("span");
+  subj.className = "hist-subject";
+  subj.textContent = "아직 서버에 반영되지 않은 변경 " + count + "건";
+  desc.appendChild(subj);
+  desc.appendChild(makeTag("현재 PC", "tag-current"));
+
+  const hash = document.createElement("span");
+  hash.className = "hist-hash";
+  hash.textContent = "";
+
+  // 커밋이 아니라 되돌릴 대상이 없다. 다른 행과 열 정렬을 맞추기 위해 자리만 유지(disabled = 숨김).
+  const revert = document.createElement("button");
+  revert.className = "revert";
+  revert.textContent = "되돌리기";
+  revert.disabled = true;
+
+  li.append(time, desc, hash, revert);
+  return li;
+}
+
 function renderLog(m) {
   const list = $("histList");
   list.innerHTML = "";
   const items = m.items || [];
   $("histCount").textContent = items.length ? "최근 " + items.length + "건" : "";
+
+  // 미커밋 변경이 있으면 맨 위에 별도 행을 얹고 '현재 PC' 태그를 그 행이 가진다.
+  const dirtyCount = (lastStatus && lastStatus.configured !== false && !lastStatus.clean)
+    ? (lastStatus.dirtyCount | 0) : 0;
+  if (dirtyCount > 0) list.appendChild(makeUncommittedRow(dirtyCount));
 
   for (const it of items) {
     const li = document.createElement("li");
@@ -110,7 +234,8 @@ function renderLog(m) {
     desc.appendChild(subj);
     const isHead = it.hash === m.head;
     const isRemote = it.hash === m.remote;
-    if (isHead) desc.appendChild(makeTag("현재 PC", "tag-current"));
+    // 미커밋 행이 있으면 '현재 PC' 는 그쪽이 가지므로 커밋 행에는 붙이지 않는다.
+    if (isHead && dirtyCount === 0) desc.appendChild(makeTag("현재 PC", "tag-current"));
     if (isRemote) desc.appendChild(makeTag("서버", "tag-remote"));
 
     const hash = document.createElement("span");
@@ -137,12 +262,30 @@ function makeTag(text, cls) {
 
 function handle(msg) {
   switch (msg.type) {
-    case "status": renderStatus(msg); break;
-    case "log":    renderLog(msg); break;
+    case "status":
+      isConfigured = msg.configured !== false;
+      lastStatus = msg;
+      renderStatus(msg);
+      if (lastLog) renderLog(lastLog);   // 태그 위치가 미커밋 여부에 의존 → 이력 재렌더
+      break;
+    case "log":
+      hideBusy();          // 모든 원격 작업이 마지막에 log 를 보낸다
+      lastLog = msg;
+      renderLog(msg);
+      break;
     case "result":
+      hideBusy();          // 실패로 조기 종료(log 미수신)하는 경로까지 확실히 해제
       showToast(msg.message + (msg.detail ? " — " + msg.detail : ""), msg.ok);
       // 부트스트랩 등 결과 직후, 초기 설정 화면이면 상태를 다시 조회(성공 시 전환/실패 시 버튼 복구)
       if (!$("setup").hidden) send("status");
+      break;
+    case "settings":   // 셸 설정 탭에서 변경 통지 → 즉시 반영
+      appSettings = normalizeSettings(msg.settings);
+      sendConfigure();
+      applyAutoRefresh();
+      if (isConfigured) send("log");   // 이력 개수 변경 반영
+      var ru = $("repoUrl");
+      if (ru && appSettings.repoUrl && document.activeElement !== ru) ru.value = appSettings.repoUrl;
       break;
     default: break;
   }
@@ -173,12 +316,17 @@ $("setupBtn").addEventListener("click", function () {
   send("bootstrap", url);
 });
 
-$("themeBtn").addEventListener("click", () => {
-  const cur = document.documentElement.getAttribute("data-theme") || "light";
-  document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
-});
-
-// default to light (matches the user's terminal theme); request initial state.
-document.documentElement.setAttribute("data-theme", "light");
-send("status");
-send("log");
+// 시작 시퀀스: 설정을 C++ 모듈에 먼저 전달(이력 개수 등) → 상태 조회.
+// '시작 시 원격 확인' 이 켜져 있으면 fetch 포함 새로고침으로 최신 여부를 바로 반영한다.
+sendConfigure();
+if (appSettings.repoUrl) {
+  var __ru = $("repoUrl");
+  if (__ru) __ru.value = appSettings.repoUrl;
+}
+if (appSettings.startupFetch) {
+  send("refresh");
+} else {
+  send("status");
+  send("log");
+}
+applyAutoRefresh();

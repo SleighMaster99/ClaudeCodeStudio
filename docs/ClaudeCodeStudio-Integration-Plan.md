@@ -326,7 +326,8 @@ extern "C" {
 
 - **D10 statusLine 이식성** — `$LOCALAPPDATA` 환경변수 대신 **`~` 기반 forward-slash 경로**로 확정.
   P5 실측 결과 Git Bash 는 statusLine command 에서 `~` 를 각 PC home 으로 확장함(공식 문서 확인)하나, 임의 환경변수(`$LOCALAPPDATA`/`%LOCALAPPDATA%`) 확장은 문서에 없어 `~` 를 채택. 목표(PC 공통 문자열 + 각 PC 해석)는 동일 달성.
-  → 설치본 기준 `powershell -NoProfile -ExecutionPolicy Bypass -File ~/AppData/Local/Programs/ClaudeCodeStudio/StatusLine.ps1` (개발 위치면 절대경로 fallback).
+  → 설치본 기준 `<셸> -NoProfile -ExecutionPolicy Bypass -File ~/AppData/Local/Programs/ClaudeCodeStudio/StatusLine.ps1` (개발 위치면 절대경로 fallback).
+  `<셸>` 은 아래 §19 참조 — 최초 구현은 `powershell` 고정이었고, 이후 선택 가능(기본 `pwsh`)으로 바뀌었다.
 - **D11 모듈 로딩** — "빌드 링크" 대신 **`LoadLibrary` + `GetProcAddress`**(하드코딩 목록 `kModuleDlls`).
   §6 계약이 모듈마다 동일 함수명(`Module_*`)이라 암시적 링크는 심볼 충돌 → 런타임 로드로 구현. "암시적"의 의미(로드할 dll 목록을 코드에 하드코딩)는 유지. 향후 `modules/` 폴더 스캔으로 전환 용이.
 - **§5 / §12-6 `runtime/` 폴더** — 별도 폴더로 이동하지 않고 **repo 루트에 유지**(StatusLine.ps1, config.json, usage_config.json).
@@ -334,3 +335,31 @@ extern "C" {
 - **§12-5 Editor/ 제거** — C# WPF 편집기 소스/tracked 제거 + 물리 폴더(빌드산출물)까지 삭제 완료.
 
 > 결과: Phase P0~P5 전부 완료·검증. 남은 미확인(환경변수 셸 확장)은 `~` 채택으로 닫힘.
+
+---
+
+## 19. P5 이후 변경 (통합 완료 후 기능 확장)
+
+P0~P5 로 통합이 끝난 뒤 추가된 것들. §1~§17 은 통합 당시 계획·결정 기록이므로 그대로 두고,
+그 이후 달라진 사항만 여기 적는다.
+
+- **좌측 탭에 ⚙ 설정 화면 추가** (§1 은 탭 2개 전제) — 모듈이 아니라 **셸이 직접 소유**한다.
+  카테고리 탭(일반/화면/동기화) + 전 카테고리 검색 구조. 값은 웹 `localStorage` 에 저장하고,
+  창 크기만 C++ 이 `%LOCALAPPDATA%\ClaudeCodeStudio\window_size.txt` 에 기록한다.
+  셸 전용 명령이 필요해져 라우터에 `module=="core"` 분기(`Host_HandleCoreCmd`)를 추가했다.
+- **`config.json` 에 `options` 추가** — 막대 폭 / 색 임계값 / 아이콘 세트 / 실행 셸.
+  **선택 키**라 없으면 기본값으로 동작하므로 기존 config 와 호환된다(§16 의 rows 계약 유지).
+  저장 시 `PrettyJson` 으로 들여쓴다 — 설치본에 배포되고 손으로도 고치는 파일이라서.
+- **statusLine 실행 셸 선택** — `options.shell` 로 정하며 **기본 `pwsh`**(PowerShell 7),
+  PATH 에 없으면 `powershell` 로 폴백하고 결과 메시지로 알린다. D10 의 경로 규칙은 그대로.
+  이 과정에서 `StatusLine.ps1` 의 stdin 읽기를 `[Console]::In` → `OpenStandardInput()` +
+  UTF-8 명시 디코딩으로 교체했다. PowerShell 7 은 `[Console]::InputEncoding` 설정이
+  리다이렉트된 stdin 에 반영되지 않아 세션 JSON 파싱이 조용히 실패했다(실측).
+- **아이콘 세트 이원화** — `$script:Icons`(이모지, 기본) / `$script:IconsNerd`(Nerd Font).
+  `options.icon_set` 으로 전환. 새 아이콘은 두 세트 모두에 추가해야 한다.
+- **동기화 UI** — 미커밋 변경을 이력 맨 위 별도 행으로 표시하고 '현재 PC' 태그를 그 행에 둔다
+  (커밋 포인터가 서버와 같아도 앞섬이 보이도록). 원격 작업 중에는 오버레이로 화면을 덮어 중복 실행을 막는다.
+- **`usage_config.json` 은 현재 미사용** — `Get-PlanLimits` 가 정의만 되어 있고 호출되지 않아
+  렌더 결과에 영향이 없다. 사용률 표시는 stdin `rate_limits` 로만 계산된다.
+- **테스트** — §15 의 E2E(격리 데스크톱 + CDP) 계층에 설정/동기화 시나리오를 추가해 14건 운용 중.
+  §15 가 주력으로 제시한 **단위 테스트(모듈 DLL 직접 호출) 하네스는 아직 없다** — 남은 과제.

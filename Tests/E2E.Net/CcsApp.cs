@@ -14,13 +14,16 @@ public sealed class CcsApp : IDisposable
 {
     private readonly Process _proc;
     private readonly string? _tempClaudeDir;
+    private readonly string _stateDir;       // CCSTUDIO_STATE_DIR — 창 크기/WebView2 프로필 격리 (사용자 상태 오염 방지)
+    private readonly bool _ownsStateDir;     // 자동 생성한 경우만 Dispose 에서 삭제 (호출자 제공 시 재사용 가능 — 재시작 시나리오)
     public EdgeDriver Driver { get; }
     public int Port { get; }
     public IJavaScriptExecutor Js => (IJavaScriptExecutor)Driver;
 
-    private CcsApp(Process proc, EdgeDriver driver, int port, string? tempClaudeDir)
+    private CcsApp(Process proc, EdgeDriver driver, int port, string? tempClaudeDir, string stateDir, bool ownsStateDir)
     {
         _proc = proc; Driver = driver; Port = port; _tempClaudeDir = tempClaudeDir;
+        _stateDir = stateDir; _ownsStateDir = ownsStateDir;
     }
 
     // repo 루트 = ClaudeCodeStudio.sln 위치까지 상향 탐색.
@@ -37,14 +40,32 @@ public sealed class CcsApp : IDisposable
         ?? Path.Combine(RepoRoot(), "bin", "Debug", "ClaudeCodeStudio.exe");
 
     /// <param name="unconfigured">true 면 빈 임시 폴더를 repoDir 로 지정해 Sync 를 '초기 설정' 화면으로 띄운다.</param>
-    public static CcsApp Launch(bool unconfigured = false)
+    /// <param name="stateDir">앱 로컬 상태 폴더 재사용 (재시작 복원 시나리오). null 이면 테스트별 임시 폴더 자동 생성/삭제.</param>
+    /// <param name="claudeDir">Sync 대상 ~/.claude 대체 폴더 (git 픽스처). 정리는 호출자 몫.</param>
+    /// <param name="statusbarRoot">StatusBar 모듈 루트(config.json 기록 위치) 오버라이드. 정리는 호출자 몫.</param>
+    /// <param name="settingsPath">settings.json 경로 오버라이드 (statusLine 적용 검증). 정리는 호출자 몫.</param>
+    public static CcsApp Launch(bool unconfigured = false, string? stateDir = null,
+                                string? claudeDir = null, string? statusbarRoot = null, string? settingsPath = null)
     {
         int port = FreePort();
         var psi = new ProcessStartInfo(ExePath) { UseShellExecute = false };
         psi.EnvironmentVariables["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = $"--remote-debugging-port={port}";
 
+        // 앱 로컬 상태(창 크기 파일 + WebView2 프로필/localStorage)를 테스트별 임시 폴더로 격리
+        bool ownsState = stateDir == null;
+        string stateTmp = stateDir ?? Path.Combine(Path.GetTempPath(), "ccs-e2e-state-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(stateTmp);
+        psi.EnvironmentVariables["CCSTUDIO_STATE_DIR"] = stateTmp;
+
+        if (statusbarRoot != null) psi.EnvironmentVariables["CCSTUDIO_STATUSBAR_ROOT"] = statusbarRoot;
+        if (settingsPath != null) psi.EnvironmentVariables["CCSTUDIO_SETTINGS_PATH"] = settingsPath;
+
         string? tmp = null;
-        if (unconfigured)
+        if (claudeDir != null)
+        {
+            psi.EnvironmentVariables["CCSTUDIO_CLAUDE_DIR"] = claudeDir;
+        }
+        else if (unconfigured)
         {
             tmp = Path.Combine(Path.GetTempPath(), "ccs-e2e-empty-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tmp);
@@ -62,7 +83,7 @@ public sealed class CcsApp : IDisposable
             throw new InvalidOperationException("app page(https://claudecodestudio.local) 미발견 — launch 실패");
         }
 
-        var app = new CcsApp(proc, driver, port, tmp);
+        var app = new CcsApp(proc, driver, port, tmp, stateTmp, ownsState);
         app.WaitForSelector(".tabbar", 10000);
         return app;
     }
@@ -153,9 +174,13 @@ public sealed class CcsApp : IDisposable
     public void Dispose()
     {
         try { Driver.Quit(); } catch { }
+        // 우선 정상 종료(WM_CLOSE) 시도 — WebView2 프로필(localStorage)이 디스크에 플러시되어
+        // stateDir 재사용(재시작 복원) 시나리오가 안정된다. 실패 시 강제 종료.
+        try { if (!_proc.HasExited && _proc.CloseMainWindow()) _proc.WaitForExit(5000); } catch { }
         TryKill(_proc);
         try { _proc.WaitForExit(10000); } catch { }
         if (_tempClaudeDir != null) { try { Directory.Delete(_tempClaudeDir, true); } catch { } }
+        if (_ownsStateDir) { try { Directory.Delete(_stateDir, true); } catch { } }
     }
 
     private static void TryKill(Process proc)

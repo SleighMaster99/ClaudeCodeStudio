@@ -25,6 +25,32 @@
     <pre id="preview" class="preview">(레이아웃에 항목을 추가하세요)</pre>
   </section>
 
+  <section class="opts">
+    <span class="opts-title">표시 옵션</span>
+    <label class="opt">막대 폭
+      <input id="optBarW" type="number" min="4" max="40" step="1" value="10">
+    </label>
+    <label class="opt">주의 색 %
+      <input id="optWarn" type="number" min="1" max="99" step="1" value="50">
+    </label>
+    <label class="opt">위험 색 %
+      <input id="optCrit" type="number" min="2" max="100" step="1" value="80">
+    </label>
+    <label class="opt">아이콘
+      <select id="optIcon">
+        <option value="emoji">이모지</option>
+        <option value="nerd">Nerd Font</option>
+      </select>
+    </label>
+    <label class="opt">실행 셸
+      <select id="optShell">
+        <option value="pwsh">pwsh (PowerShell 7, 기본)</option>
+        <option value="powershell">powershell (Windows 내장)</option>
+      </select>
+    </label>
+    <span class="opts-hint">저장 &amp; 적용 시 함께 반영됩니다. 사용률 막대의 폭과 색 기준(주의/위험 %), 아이콘 글리프(Nerd Font 는 터미널 폰트가 Nerd Font 일 때만 표시), statusLine 실행 셸을 바꿉니다.</span>
+  </section>
+
   <div class="main">
     <aside class="palette">
       <div class="palette-head">항목 팔레트 — 오른쪽 줄로 끌어다 놓기</div>

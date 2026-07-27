@@ -4,11 +4,19 @@
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 $ConfigPath = Join-Path $PSScriptRoot 'config.json'
 
-$stdin = [Console]::In.ReadToEnd()
+# stdin(세션 JSON)을 UTF-8 로 명시 디코딩해 읽는다.
+# [Console]::In 은 셸의 콘솔 입력 인코딩을 따르는데, PowerShell 7 에서는
+# [Console]::InputEncoding = UTF8 이 리다이렉트된 stdin 에 반영되지 않아(설정은 성공으로 보고됨)
+# 한글/이모지가 깨지고 ConvertFrom-Json 이 실패 → 컨텍스트·사용률 등 stdin 기반 항목이 전부 0 이 된다.
+# 표준 입력 스트림을 직접 UTF-8 로 읽어 셸 종류와 무관하게 만든다. (BOM 은 StreamReader 가 자동 처리)
+$stdin = ''
+try {
+    $reader = [System.IO.StreamReader]::new([Console]::OpenStandardInput(), [System.Text.UTF8Encoding]::new($false))
+    try { $stdin = $reader.ReadToEnd() } finally { $reader.Dispose() }
+} catch {}
 try { $stdin | Set-Content (Join-Path $PSScriptRoot '.last_input.json') -Encoding UTF8 } catch {}
 $ctx = $null
 try { $ctx = $stdin | ConvertFrom-Json } catch {}
@@ -18,6 +26,24 @@ if (-not (Test-Path $ConfigPath)) { return }
 $cfg = $null
 try { $cfg = Get-Content $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return }
 if ($null -eq $cfg -or $null -eq $cfg.rows) { return }
+
+# ----- Options (config.json "options" — 편집기 표시 옵션. 없으면 기본값) -----
+$script:BarW    = 10        # 사용률 막대 폭 (칸)
+$script:WarnPct = 50.0      # 이 % 이상이면 노랑
+$script:CritPct = 80.0      # 이 % 이상이면 빨강
+$script:IconSet = 'emoji'   # 'emoji' | 'nerd'
+$opt = $cfg.options
+if ($null -ne $opt) {
+    $bw = $opt.bar_width -as [int]
+    if ($null -ne $bw -and $bw -ge 4 -and $bw -le 40) { $script:BarW = $bw }
+    $wp = $opt.warn_pct -as [double]
+    $cp = $opt.crit_pct -as [double]
+    if ($null -ne $wp -and $null -ne $cp -and $wp -ge 1 -and $cp -le 100 -and $wp -lt $cp) {
+        $script:WarnPct = $wp
+        $script:CritPct = $cp
+    }
+    if ([string]$opt.icon_set -eq 'nerd') { $script:IconSet = 'nerd' }
+}
 
 # ----- Helpers -----
 function Get-Field($path, $default = '') {
@@ -134,16 +160,41 @@ $script:Icons = @{
     'fable'    = '🔮'
 }
 
+# Nerd Font 글리프 세트 (options.icon_set = 'nerd' 시 위 이모지 세트를 대체).
+# 코드포인트는 nerd-fonts glyphnames.json 검증값(fa-*/cod-* 계열, BMP 사적영역).
+# 터미널 폰트가 Nerd Font 일 때만 제대로 표시된다. 1칸 흑백 글리프라 VS16 불필요.
+$script:IconsNerd = @{
+    'model'    = [string][char]0xEB08   # cod-hubot (robot)
+    'version'  = [string][char]0xF02B   # fa-tag
+    'session'  = [string][char]0xF02E   # fa-bookmark
+    'plan'     = [string][char]0xF005   # fa-star
+    'ctx'      = [string][char]0xF2DB   # fa-microchip
+    'effort'   = [string][char]0xF0EB   # fa-lightbulb-o
+    'cost'     = [string][char]0xF155   # fa-dollar-sign
+    'duration' = [string][char]0xF252   # fa-hourglass-half
+    'dir'      = [string][char]0xF07B   # fa-folder
+    'git'      = [string][char]0xF126   # fa-code-branch
+    'time'     = [string][char]0xF017   # fa-clock
+    'date'     = [string][char]0xF133   # fa-calendar-o
+    'user'     = [string][char]0xF007   # fa-user
+    'host'     = [string][char]0xF108   # fa-desktop
+    'os'       = [string][char]0xF17A   # fa-windows
+    'h5'       = [string][char]0xF252   # fa-hourglass-half
+    'week'     = [string][char]0xF073   # fa-calendar
+    'fable'    = [string][char]0xF0D0   # fa-magic
+}
+if ($script:IconSet -eq 'nerd') { $script:Icons = $script:IconsNerd }
+
 function Get-BarColor([double]$pct) {
-    if ($pct -ge 80) { return "$([char]27)[91m" }   # bright red
-    if ($pct -ge 50) { return "$([char]27)[93m" }   # bright yellow
-    return "$([char]27)[92m"                         # bright green
+    if ($pct -ge $script:CritPct) { return "$([char]27)[91m" }   # bright red
+    if ($pct -ge $script:WarnPct) { return "$([char]27)[93m" }   # bright yellow
+    return "$([char]27)[92m"                                      # bright green
 }
 
 # Track background (medium gray, visible on light & dark themes)
 $script:BG_TRACK = "$([char]27)[48;5;246m"
 
-function Render-Bar([double]$pct, [int]$width = 10) {
+function Render-Bar([double]$pct, [int]$width = $script:BarW) {
     if ($pct -lt 0) { $pct = 0 }
     if ($pct -gt 100) { $pct = 100 }
     $units = $width * 8.0 * ($pct / 100.0)
@@ -159,7 +210,7 @@ function Render-Bar([double]$pct, [int]$width = 10) {
     return $bar
 }
 
-function Render-BarAscii([double]$pct, [int]$width = 10) {
+function Render-BarAscii([double]$pct, [int]$width = $script:BarW) {
     if ($pct -lt 0) { $pct = 0 }
     if ($pct -gt 100) { $pct = 100 }
     $filled = [int][Math]::Round($width * $pct / 100.0)
@@ -168,7 +219,7 @@ function Render-BarAscii([double]$pct, [int]$width = 10) {
     return ('[' + $color + $script:BG_TRACK + ('#' * $filled) + (' ' * $empty) + $script:CR_RESET + ']')
 }
 
-function Render-BarDot([double]$pct, [int]$width = 10) {
+function Render-BarDot([double]$pct, [int]$width = $script:BarW) {
     if ($pct -lt 0) { $pct = 0 }
     if ($pct -gt 100) { $pct = 100 }
     $filled = [int][Math]::Round($width * $pct / 100.0)

@@ -59,9 +59,9 @@ public class Scenarios
 
         var palette = app.WaitForSelector(".palette", 5000);
         var splitter = app.Driver.FindElement(By.Id("splitter"));
-        // 가로 조절 커서(col-resize)가 적용됐는지 확인
+        // 가로 조절 커서(ew-resize — 시스템 커서 테마 반영, app.css 주석 참조)가 적용됐는지 확인
         var cursor = (string)app.Js.ExecuteScript("return getComputedStyle(arguments[0]).cursor;", splitter);
-        Assert.AreEqual("col-resize", cursor, "splitter cursor=col-resize");
+        Assert.AreEqual("ew-resize", cursor, "splitter cursor=ew-resize");
         int before = palette.Size.Width;
 
         // splitter 를 오른쪽으로 드래그 → 팔레트가 넓어짐
@@ -69,5 +69,48 @@ public class Scenarios
 
         int after = CcsApp.WaitUntil(() => palette.Size.Width, w => w > before + 40, 3000);
         Assert.IsTrue(after > before + 40, $"팔레트 너비 증가 ({before}→{after})");
+    }
+
+    [TestMethod]
+    public void 설정탭_테마_다크_전환_셸과_모듈_적용()
+    {
+        using var app = CcsApp.Launch();
+        app.Driver.SwitchTo().DefaultContent();
+        app.Driver.FindElement(By.CssSelector("[data-tab=settings]")).Click();
+        app.WaitForSelector("#pane-settings.active", 5000);
+
+        // 드롭다운을 다크로 변경 (change 이벤트로 설정 저장 + 전 문서 주입)
+        var theme = app.WaitForSelector("#theme", 5000);
+        app.Js.ExecuteScript("arguments[0].value='dark'; arguments[0].dispatchEvent(new Event('change'));", theme);
+
+        string shellTheme = CcsApp.WaitUntil(
+            () => (string)app.Js.ExecuteScript("return document.documentElement.getAttribute('data-theme')||'';"),
+            v => v == "dark", 3000);
+        Assert.AreEqual("dark", shellTheme, "셸 문서에 data-theme=dark 적용");
+
+        app.SwitchToModule("sync");
+        string frameTheme = CcsApp.WaitUntil(
+            () => (string)app.Js.ExecuteScript("return document.documentElement.getAttribute('data-theme')||'';"),
+            v => v == "dark", 3000);
+        Assert.AreEqual("dark", frameTheme, "sync 모듈 iframe 에 data-theme=dark 적용");
+    }
+
+    [TestMethod]
+    public void 설정탭_창크기_해상도_변경()
+    {
+        using var app = CcsApp.Launch();
+        app.Driver.SwitchTo().DefaultContent();
+        app.Driver.FindElement(By.CssSelector("[data-tab=settings]")).Click();
+        app.WaitForSelector("#pane-settings.active", 5000);
+
+        // 기본 1920x1080 에서 1280x720 선택 → C++ 가 SetWindowPos → 클라이언트 폭 감소
+        long before = (long)app.Js.ExecuteScript("return window.innerWidth;");
+        var sel = app.WaitForSelector("#winSize", 5000);
+        app.Js.ExecuteScript("arguments[0].value='1280x720'; arguments[0].dispatchEvent(new Event('change'));", sel);
+
+        long after = CcsApp.WaitUntil(
+            () => (long)app.Js.ExecuteScript("return window.innerWidth;"),
+            w => w < before - 100, 5000);
+        Assert.IsTrue(after < before - 100, $"창 클라이언트 폭 감소 ({before}→{after})");
     }
 }

@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 
 #include "module_api.h"
@@ -17,6 +18,13 @@ namespace fs = std::filesystem;
 
 static PostToUiFn   g_post = nullptr;
 static std::wstring g_repoDir;   // 기본 %USERPROFILE%\.claude (테스트 시 CCSTUDIO_CLAUDE_DIR)
+
+// 셸 설정 탭 값 (configure 명령으로 갱신, 저장소는 웹 localStorage — 여기는 프로세스 생존 동안만).
+static const char*  kDefaultRepoUrl   = "https://github.com/SleighMaster99/claude-code-settings.git";
+static const char*  kDefaultCommitTpl = "update from {host} {time}";
+static int          g_logCount    = 8;               // 이력 표시 개수 (1~50)
+static std::string  g_commitTpl;                     // 커밋 메시지 형식 (빈 값 = 기본)
+static std::string  g_defaultRepo = kDefaultRepoUrl; // 초기 설정 기본 저장소 URL
 
 // ---------- string helpers ----------
 static std::wstring Widen(const std::string& s) {
@@ -128,6 +136,27 @@ static void PostToWeb(const std::string& json) {
 }
 
 // ---------- misc ----------
+static std::string ReplaceAll(std::string s, const std::string& from, const std::string& to) {
+    size_t p = 0;
+    while ((p = s.find(from, p)) != std::string::npos) { s.replace(p, from.size(), to); p += to.size(); }
+    return s;
+}
+// 명령줄 인자 하나를 Windows 규칙(CommandLineToArgvW)대로 인용한다.
+// 따옴표는 \" 로, 따옴표 직전의 백슬래시 연속은 두 배로 늘린다 — 이렇게 해야
+// 값이 \ 로 끝나거나 " 를 포함해도 인자 경계가 깨지지 않는다.
+static std::string QuoteArg(const std::string& s) {
+    std::string out = "\"";
+    size_t slashes = 0;
+    for (char c : s) {
+        if (c == '\\') { ++slashes; out += c; continue; }
+        if (c == '"') { out.append(slashes + 1, '\\'); out += '"'; }
+        else out += c;
+        slashes = 0;
+    }
+    out.append(slashes, '\\');   // 닫는 따옴표 앞의 백슬래시도 두 배로
+    out += '"';
+    return out;
+}
 static std::string HostName() {
     wchar_t buf[256]; DWORD n = 256;
     if (GetComputerNameW(buf, &n)) return Narrow(std::wstring(buf, n));
@@ -170,7 +199,14 @@ static void CmdStatus() {
     std::string branch, dirty, remote, headHash, remoteHash, counts;
     Git(L"rev-parse --abbrev-ref HEAD", branch);      branch = Trim(branch);
     Git(L"status --porcelain", dirty);
-    bool clean = Trim(dirty).empty();
+    std::string dirtyTrimmed = Trim(dirty);
+    bool clean = dirtyTrimmed.empty();
+    // 미커밋 변경 파일 수 (porcelain 한 줄 = 한 항목) — UI 가 이력 맨 위에 별도 행으로 표시한다.
+    int dirtyCount = 0;
+    if (!clean) {
+        dirtyCount = 1;
+        for (char c : dirtyTrimmed) if (c == '\n') ++dirtyCount;
+    }
     Git(L"remote get-url origin", remote);            remote = Trim(remote);
     Git(L"rev-parse --short HEAD", headHash);          headHash = Trim(headHash);
     Git(L"rev-parse --short origin/main", remoteHash);  remoteHash = Trim(remoteHash);
@@ -182,6 +218,7 @@ static void CmdStatus() {
     std::string j = "{\"type\":\"status\",\"configured\":true,";
     j += "\"branch\":\""     + JsonEsc(branch)     + "\",";
     j += "\"clean\":"        + std::string(clean ? "true" : "false") + ",";
+    j += "\"dirtyCount\":"   + std::to_string(dirtyCount) + ",";
     j += "\"ahead\":"        + std::to_string(ahead)  + ",";
     j += "\"behind\":"       + std::to_string(behind) + ",";
     j += "\"remote\":\""     + JsonEsc(remote)     + "\",";
@@ -194,7 +231,7 @@ static void CmdLog() {
     std::string headHash, remoteHash, raw;
     Git(L"rev-parse --short HEAD", headHash);           headHash = Trim(headHash);
     Git(L"rev-parse --short origin/main", remoteHash);   remoteHash = Trim(remoteHash);
-    Git(L"log -8 --pretty=format:%h\x1f%cr\x1f%s\x1e", raw);
+    Git(L"log -" + std::to_wstring(g_logCount) + L" --pretty=format:%h\x1f%cr\x1f%s\x1e", raw);
 
     std::string j = "{\"type\":\"log\",\"head\":\"" + JsonEsc(headHash) +
                     "\",\"remote\":\"" + JsonEsc(remoteHash) + "\",\"items\":[";
@@ -247,8 +284,12 @@ static void CmdPush() {
     if (!Trim(dirty).empty()) {
         std::string tmp;
         Git(L"add -A", tmp);
-        std::string msg = "update from " + HostName() + " " + NowStamp();
-        Git(L"commit -m \"" + Widen(msg) + L"\"", tmp);
+        // 커밋 메시지 형식({host}/{time} 치환). 인용은 QuoteArg 가 담당하므로
+        // 값에 따옴표·백슬래시(예: 경로)가 들어가도 그대로 전달된다.
+        std::string tpl = g_commitTpl.empty() ? kDefaultCommitTpl : g_commitTpl;
+        std::string msg = ReplaceAll(ReplaceAll(tpl, "{host}", HostName()), "{time}", NowStamp());
+        if (Trim(msg).empty()) msg = ReplaceAll(ReplaceAll(std::string(kDefaultCommitTpl), "{host}", HostName()), "{time}", NowStamp());
+        Git(L"commit -m " + Widen(QuoteArg(msg)), tmp);
     }
     std::string out;
     DWORD code = Git(L"push origin main", out);
@@ -268,8 +309,8 @@ static void CmdSetRemote(const std::string& url) {
     if (!IsConfigured()){ Result(false, "먼저 초기 설정이 필요합니다", ""); CmdStatus(); return; }
     std::string tmp;
     DWORD code = (Git(L"remote get-url origin", tmp) == 0)
-        ? Git(L"remote set-url origin " + Widen(u), tmp)
-        : Git(L"remote add origin "     + Widen(u), tmp);
+        ? Git(L"remote set-url origin " + Widen(QuoteArg(u)), tmp)
+        : Git(L"remote add origin "     + Widen(QuoteArg(u)), tmp);
     if (code != 0) { Result(false, "서버 주소 변경 실패", Trim(tmp)); CmdStatus(); return; }
     Result(true, "서버 주소를 변경했습니다", u);
     CmdStatus();
@@ -295,13 +336,12 @@ static void BackupExisting() {
 static void CmdBootstrap(const std::string& url) {
     if (IsConfigured()) { Result(false, "이미 설정되어 있습니다", ""); CmdStatus(); CmdLog(); return; }
 
-    std::string repoUrl = url.empty()
-        ? "https://github.com/SleighMaster99/claude-code-settings.git" : url;
+    std::string repoUrl = url.empty() ? g_defaultRepo : url;
     std::string out, tmp;
 
     if (Git(L"init -b main", tmp) != 0) { Result(false, "저장소 초기화(git init) 실패", Trim(tmp)); return; }
     Git(L"remote remove origin", tmp);   // 잔여 origin 제거(있으면)
-    if (Git(L"remote add origin " + Widen(repoUrl), tmp) != 0) { Result(false, "원격(origin) 추가 실패", Trim(tmp)); return; }
+    if (Git(L"remote add origin " + Widen(QuoteArg(repoUrl)), tmp) != 0) { Result(false, "원격(origin) 추가 실패", Trim(tmp)); return; }
     if (Git(L"fetch origin", out) != 0) { Result(false, "원격에서 가져오기 실패 (저장소 URL/로그인 확인)", Trim(out)); return; }
 
     BackupExisting();
@@ -312,6 +352,16 @@ static void CmdBootstrap(const std::string& url) {
     Result(true, "초기 설정 완료", "서버 설정을 가져왔습니다. 기존 설정은 .sync-backup 에 백업했습니다");
     CmdStatus();
     CmdLog();
+}
+
+// 셸 설정 탭 값 수신. 응답 없음 — 이후 명령부터 반영된다.
+static void CmdConfigure(const std::string& req) {
+    std::string n = JsonGet(req, "logCount");
+    int v = std::atoi(n.c_str());
+    g_logCount = (v >= 1 && v <= 50) ? v : 8;
+    g_commitTpl = JsonGet(req, "commitMsg");
+    std::string r = Trim(JsonGet(req, "defaultRepo"));
+    g_defaultRepo = r.empty() ? kDefaultRepoUrl : r;
 }
 
 // ---------- module exports ----------
@@ -328,6 +378,7 @@ MODULE_API void Module_Handle(const char* reqJson) {
     std::string cmd = JsonGet(req, "cmd");
     std::string arg = JsonGet(req, "arg");
     if      (cmd == "status")    CmdStatus();
+    else if (cmd == "configure") CmdConfigure(req);
     else if (cmd == "log")       CmdLog();
     else if (cmd == "refresh")   CmdFetch();
     else if (cmd == "pull")      CmdPull();

@@ -209,5 +209,12 @@
         "type": "fable_remain"
       }
     ]
-  ]
+  ],
+  "options": {
+    "bar_width": 10,
+    "warn_pct": 50,
+    "crit_pct": 80,
+    "icon_set": "emoji",
+    "shell": "pwsh"
+  }
 }

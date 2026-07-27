@@ -10,6 +10,10 @@ std::string g_currentModule;
 
 void Router_Handle(const std::string& jsonMsg) {
     std::string module = JsonGetStr(jsonMsg, "module");
+    if (module == "core") {          // 모듈 DLL 이 아닌 Core 자체 명령 (셸 설정 탭)
+        Host_HandleCoreCmd(jsonMsg);
+        return;
+    }
     Module* m = Modules_Find(module);
     if (m && m->handle) {
         g_currentModule = module;

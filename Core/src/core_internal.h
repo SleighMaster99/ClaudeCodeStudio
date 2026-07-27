@@ -23,6 +23,9 @@ void    Router_Handle(const std::string& jsonMsg);
 // host.cpp — 모듈이 결과를 UI 로 돌려보낼 때 부르는 post 콜백.
 void    Host_PostToUi(const char* json);
 
+// host.cpp — module=="core" 인 셸 전용 명령(창 크기 변경 등) 처리.
+void    Host_HandleCoreCmd(const std::string& jsonMsg);
+
 // 현재 Module_Handle 실행 중인 모듈 id. post 결과에 봉투 태그를 붙여
 // 부모 셸이 올바른 모듈 iframe 으로 중계하게 한다. router.cpp 정의.
 extern std::string g_currentModule;
