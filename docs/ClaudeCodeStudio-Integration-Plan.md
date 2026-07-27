@@ -363,3 +363,40 @@ P0~P5 로 통합이 끝난 뒤 추가된 것들. §1~§17 은 통합 당시 계�
   렌더 결과에 영향이 없다. 사용률 표시는 stdin `rate_limits` 로만 계산된다.
 - **테스트** — §15 의 E2E(격리 데스크톱 + CDP) 계층에 설정/동기화 시나리오를 추가해 14건 운용 중.
   §15 가 주력으로 제시한 **단위 테스트(모듈 DLL 직접 호출) 하네스는 아직 없다** — 남은 과제.
+
+### 릴리스 파이프라인 (§11 인스톨러 & 배포의 후속)
+
+§11 은 "NSIS 로 setup.exe 를 만들어 GitHub Release 에 올린다"까지만 정했다. 실제로는 그 앞뒤가 수작업이라
+(버전을 nsi 에 손으로 박고, MSBuild 와 makensis 를 따로 돌림) 다음을 추가했다.
+
+- **`Build.bat` — 5단계 파이프라인**: 버전 검증 → MSBuild → `Shipping\<ver>\` 스테이징 → makensis →
+  `installer\VERSION` 갱신. 산출물은 `Shipping\ClaudeCodeStudio-Setup-<ver>.exe`.
+  스테이징을 거치는 이유는 pdb/lib 유입 차단이 아니라(nsi 가 파일을 명시하므로 애초에 안 들어간다)
+  **설치 없이 그대로 실행하거나 zip 으로 묶을 수 있는 배포본을 덤으로 얻기** 위해서다.
+- **`installer\VERSION` — 발행 이력**: 마지막으로 만든 버전을 담고, 이보다 낮거나 같은 버전은 생성이 거부된다.
+  git tag·GitHub Release 는 당시 둘 다 비어 있었고, 산출물 파일명 스캔은 `Shipping/` 이 .gitignore 라
+  PC 를 옮기면 이력이 사라진다. 커밋되는 파일이 가장 확실해서 이 방식을 택했다.
+- **`-t:ClaudeCodeStudio` 로 빌드**: 솔루션 전체를 빌드하면 `ReleaseTool` 도 대상이 되는데, 그 스크립트를
+  구동하는 것이 바로 `ReleaseTool.exe` 라 자기 exe 를 덮어쓰다 실패한다. ProjectReference 로 Core 와
+  모듈 2 개는 함께 빌드되므로 번들에 빠지는 것은 없다.
+- **VC++ CRT 3종 동봉** (`installer\redist\`): §4 가 정한 **동적 CRT**(`/MD`) 때문에 대상 PC 에
+  재배포 패키지가 없으면 실행 자체가 안 된다. D5 의 per-user 설치(관리자 불필요)를 유지하는 한
+  재배포 패키지를 설치할 수 없으므로, Edge·Office·Blender 등이 쓰는 **앱 폴더 동봉** 방식을 골랐다.
+  `/MT` 정적 링크도 후보였으나 vcxproj 4 개의 빌드 설정을 바꿔야 하고
+  `WebView2LoaderStatic.lib` 와의 조합이 확인되지 않아 보류했다.
+- **`ClaudeCodeStudio.nsi` 인자화**: `/DVERSION /DSTAGE_DIR /DREDIST_DIR /DOUT_FILE` 을 받고,
+  없으면 `!error` 로 중단한다 — 버전이 하드코딩된 설치본이 실수로 나오는 것을 막는다.
+
+- **`ReleaseTool` — 릴리스 전용 창(별도 exe)**: 버전을 입력받아 검증하고 `Build.bat` 을 띄운 뒤
+  출력을 로그로 흘린다. 프로세스 실행은 Sync 모듈의 `RunCapture` 와 같은 방식(`CREATE_NO_WINDOW` +
+  파이프)이라 콘솔 창이 뜨지 않는다.
+  - **모듈(탭)이 아니라 별도 exe 인 이유**: 릴리스는 개발자 전용 기능이라 설치본에 노출되면 안 된다.
+    탭으로 만들고 인스톨러에서 빼는 방법도 있었지만, `Core_Run` 이 탭 셸·모듈 로더를 전제로 하고 있어
+    (창 클래스·시작 URL·상태 폴더·모듈 목록이 전부 앱 전용으로 고정) 재사용하려면 Core 를 파라미터화해야 했다.
+    **동작 중인 앱의 핵심 DLL 을 건드리지 않는 쪽**을 택해, 창 + WebView2 만 자체 보유하는 독립 exe 로 두었다.
+    §4 의 "결과물은 exe 하나 + DLL 들"은 **배포 기준으로는 그대로**다 — 이 exe 는 설치본에 들어가지 않는다.
+  - 설치본 격리는 **`Build.bat` 과 nsi 어디에도 `ReleaseTool` 을 파일로 언급하지 않는 것**으로 달성한다.
+    자기 web 도 `bin\Release\releasetool\` 에 두어 nsi 의 `web\` 복사 범위 밖에 있다.
+  - 자동 검증은 격리 데스크톱 렌더·`init` 통신까지다. §15 의 격리 데스크톱에는 실제 OS 입력이 닿지 않고
+    (`CLAUDE.md` 도 `SendInput` 사용을 금지한다) `ReleaseTool` 은 CDP 를 열지 않으므로,
+    버전 입력 이후의 흐름은 **수동 확인 대상**으로 남는다.
