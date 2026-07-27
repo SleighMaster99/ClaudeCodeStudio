@@ -239,6 +239,68 @@ public class SettingsTests
         finally { try { Directory.Delete(baseDir, true); } catch { } }
     }
 
+    // ---------- 설정 탭 카테고리 / 검색 ----------
+    private static bool IsShown(CcsApp app, string css)
+    {
+        try { return app.Driver.FindElement(By.CssSelector(css)).Displayed; } catch { return false; }
+    }
+
+    private static int VisibleRowCount(CcsApp app) =>
+        app.Driver.FindElements(By.CssSelector(".set-row"))
+                  .Count(e => { try { return e.Displayed; } catch { return false; } });
+
+    [TestMethod]
+    public void 설정_카테고리_탭_전환()
+    {
+        using var app = CcsApp.Launch();
+        OpenSettingsTab(app);
+
+        // 기본 카테고리 = 일반 (시작 탭 / 창 크기)
+        Assert.IsTrue(IsShown(app, "#startTab"), "일반: 시작 탭 노출");
+        Assert.IsTrue(IsShown(app, "#winSize"), "일반: 창 크기 노출");
+        Assert.IsFalse(IsShown(app, "#theme"), "일반: 화면 설정 비노출");
+        Assert.IsFalse(IsShown(app, "#syncHist"), "일반: 동기화 설정 비노출");
+
+        app.Driver.FindElement(By.CssSelector(".set-tab[data-setcat=display]")).Click();
+        Assert.IsTrue(CcsApp.WaitUntil(() => IsShown(app, "#theme"), v => v, 3000), "화면: 테마 노출");
+        Assert.IsFalse(IsShown(app, "#startTab"), "화면: 일반 설정 비노출");
+
+        app.Driver.FindElement(By.CssSelector(".set-tab[data-setcat=sync]")).Click();
+        Assert.IsTrue(CcsApp.WaitUntil(() => IsShown(app, "#syncHist"), v => v, 3000), "동기화: 이력 개수 노출");
+        Assert.IsFalse(IsShown(app, "#theme"), "동기화: 화면 설정 비노출");
+    }
+
+    [TestMethod]
+    public void 설정_검색_전카테고리_필터()
+    {
+        using var app = CcsApp.Launch();
+        OpenSettingsTab(app);
+
+        // 현재 카테고리(일반)가 아닌 동기화 항목을 실제 타이핑으로 검색 → 카테고리를 넘어 노출
+        app.WaitForSelector("#setSearch", 5000).SendKeys("템플릿");
+        Assert.IsTrue(CcsApp.WaitUntil(() => IsShown(app, "#syncCommitMsg"), v => v, 3000),
+            "'템플릿' 검색 → 다른 카테고리의 커밋 메시지 형식 노출");
+        Assert.AreEqual(1, VisibleRowCount(app), "일치하는 행만 노출");
+        Assert.IsFalse(IsShown(app, ".set-tabs"), "검색 중 카테고리 탭 숨김");
+        StringAssert.Contains(app.Driver.FindElement(By.Id("setSearchCount")).Text, "1개", "일치 개수 표시");
+
+        // 영문 동의어(data-kw) 매칭
+        SetInput(app, "#setSearch", "resolution");
+        Assert.IsTrue(CcsApp.WaitUntil(() => IsShown(app, "#winSize"), v => v, 3000),
+            "'resolution' 검색 → 창 크기 노출(동의어 키워드)");
+
+        // 결과 없음
+        SetInput(app, "#setSearch", "존재하지않는설정");
+        Assert.IsTrue(CcsApp.WaitUntil(() => IsShown(app, "#setNoResult"), v => v, 3000), "결과 없음 안내 표시");
+        Assert.AreEqual(0, VisibleRowCount(app), "일치 행 없음");
+
+        // 지우기 → 카테고리 화면 복귀
+        app.Driver.FindElement(By.Id("setSearchClear")).Click();
+        Assert.IsTrue(CcsApp.WaitUntil(() => IsShown(app, ".set-tabs") && IsShown(app, "#startTab"), v => v, 3000),
+            "검색 해제 후 카테고리 탭/일반 카테고리 복귀");
+        Assert.IsFalse(IsShown(app, "#theme"), "검색 해제 후 비활성 카테고리는 다시 숨김");
+    }
+
     [TestMethod]
     public void 동기화_기본저장소URL_초기설정_프리필()
     {
