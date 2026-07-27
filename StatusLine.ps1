@@ -4,11 +4,19 @@
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 $ConfigPath = Join-Path $PSScriptRoot 'config.json'
 
-$stdin = [Console]::In.ReadToEnd()
+# stdin(세션 JSON)을 UTF-8 로 명시 디코딩해 읽는다.
+# [Console]::In 은 셸의 콘솔 입력 인코딩을 따르는데, PowerShell 7 에서는
+# [Console]::InputEncoding = UTF8 이 리다이렉트된 stdin 에 반영되지 않아(설정은 성공으로 보고됨)
+# 한글/이모지가 깨지고 ConvertFrom-Json 이 실패 → 컨텍스트·사용률 등 stdin 기반 항목이 전부 0 이 된다.
+# 표준 입력 스트림을 직접 UTF-8 로 읽어 셸 종류와 무관하게 만든다. (BOM 은 StreamReader 가 자동 처리)
+$stdin = ''
+try {
+    $reader = [System.IO.StreamReader]::new([Console]::OpenStandardInput(), [System.Text.UTF8Encoding]::new($false))
+    try { $stdin = $reader.ReadToEnd() } finally { $reader.Dispose() }
+} catch {}
 try { $stdin | Set-Content (Join-Path $PSScriptRoot '.last_input.json') -Encoding UTF8 } catch {}
 $ctx = $null
 try { $ctx = $stdin | ConvertFrom-Json } catch {}
