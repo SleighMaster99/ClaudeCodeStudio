@@ -137,6 +137,11 @@ body {
 .hist-row + .hist-row { border-top:1px solid var(--line); }
 .hist-row:hover { background:var(--win); }
 .hist-time { font-family:var(--font-mono); font-size:0.78125rem; color:var(--ink2); white-space:nowrap; }
+/* 미커밋 변경 행 — 커밋 이력이 아님을 시각적으로 구분 */
+.hist-row.uncommitted { background:color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow:inset 2px 0 0 var(--accent); }
+.hist-row.uncommitted .hist-time { color:var(--accent); }
+.hist-row.uncommitted .hist-subject { color:var(--ink2); font-style:italic; }
 .hist-desc { font-size:0.84375rem; color:var(--ink); min-width:0; display:flex; align-items:center; }
 .hist-subject { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tag { font-family:var(--font-ui); font-size:0.6875rem; font-weight:600; padding:2px 8px; border-radius:6px;

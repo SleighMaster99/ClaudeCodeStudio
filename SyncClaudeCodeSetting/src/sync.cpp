@@ -183,7 +183,14 @@ static void CmdStatus() {
     std::string branch, dirty, remote, headHash, remoteHash, counts;
     Git(L"rev-parse --abbrev-ref HEAD", branch);      branch = Trim(branch);
     Git(L"status --porcelain", dirty);
-    bool clean = Trim(dirty).empty();
+    std::string dirtyTrimmed = Trim(dirty);
+    bool clean = dirtyTrimmed.empty();
+    // 미커밋 변경 파일 수 (porcelain 한 줄 = 한 항목) — UI 가 이력 맨 위에 별도 행으로 표시한다.
+    int dirtyCount = 0;
+    if (!clean) {
+        dirtyCount = 1;
+        for (char c : dirtyTrimmed) if (c == '\n') ++dirtyCount;
+    }
     Git(L"remote get-url origin", remote);            remote = Trim(remote);
     Git(L"rev-parse --short HEAD", headHash);          headHash = Trim(headHash);
     Git(L"rev-parse --short origin/main", remoteHash);  remoteHash = Trim(remoteHash);
@@ -195,6 +202,7 @@ static void CmdStatus() {
     std::string j = "{\"type\":\"status\",\"configured\":true,";
     j += "\"branch\":\""     + JsonEsc(branch)     + "\",";
     j += "\"clean\":"        + std::string(clean ? "true" : "false") + ",";
+    j += "\"dirtyCount\":"   + std::to_string(dirtyCount) + ",";
     j += "\"ahead\":"        + std::to_string(ahead)  + ",";
     j += "\"behind\":"       + std::to_string(behind) + ",";
     j += "\"remote\":\""     + JsonEsc(remote)     + "\",";

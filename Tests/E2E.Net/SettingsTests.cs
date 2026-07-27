@@ -239,6 +239,47 @@ public class SettingsTests
         finally { try { Directory.Delete(baseDir, true); } catch { } }
     }
 
+    [TestMethod]
+    public void 이력_미커밋_변경행_표시와_태그_분리()
+    {
+        var (work, baseDir) = MakeSyncFixture(3);
+        try
+        {
+            // 1) 변경 없음(clean) — 최신 커밋 행이 '현재 PC'·'서버' 태그를 함께 가진다
+            using (var app = CcsApp.Launch(claudeDir: work))
+            {
+                OpenModuleTab(app, "sync");
+                CcsApp.WaitUntil(() => app.Driver.FindElements(By.CssSelector(".hist-row")).Count, n => n == 3, 8000);
+                Assert.AreEqual(0, app.Driver.FindElements(By.CssSelector(".hist-row.uncommitted")).Count,
+                    "변경 없음: 미커밋 행 없음");
+                // 본문 문구에도 '서버' 라는 낱말이 들어가므로 태그는 클래스로 판별한다
+                var top = app.Driver.FindElements(By.CssSelector(".hist-row"))[0];
+                Assert.AreEqual(1, top.FindElements(By.CssSelector(".tag-current")).Count, "최신 커밋 행에 '현재 PC' 태그");
+                Assert.AreEqual(1, top.FindElements(By.CssSelector(".tag-remote")).Count, "최신 커밋 행에 '서버' 태그");
+            }
+
+            // 2) 미커밋 변경 2건 — '현재 PC' 가 맨 위 미커밋 행으로 올라가고 커밋 행에는 '서버'만 남는다
+            File.WriteAllText(Path.Combine(work, "CLAUDE.md"), "local change");
+            File.WriteAllText(Path.Combine(work, "settings.json"), "{\"rev\":99}");
+            using (var app = CcsApp.Launch(claudeDir: work))
+            {
+                OpenModuleTab(app, "sync");
+                int un = CcsApp.WaitUntil(
+                    () => app.Driver.FindElements(By.CssSelector(".hist-row.uncommitted")).Count, n => n == 1, 8000);
+                Assert.AreEqual(1, un, "미커밋 행 1개 표시");
+
+                var rows = app.Driver.FindElements(By.CssSelector(".hist-row"));
+                Assert.AreEqual(4, rows.Count, "미커밋 행 + 커밋 3건");
+                StringAssert.Contains(rows[0].Text, "2건", "변경 파일 수 표시");
+                Assert.AreEqual(1, rows[0].FindElements(By.CssSelector(".tag-current")).Count, "미커밋 행이 '현재 PC' 태그 보유");
+                Assert.AreEqual(0, rows[0].FindElements(By.CssSelector(".tag-remote")).Count, "미커밋 행에 '서버' 태그 없음");
+                Assert.AreEqual(0, rows[1].FindElements(By.CssSelector(".tag-current")).Count, "커밋 행에서 '현재 PC' 태그 제거됨");
+                Assert.AreEqual(1, rows[1].FindElements(By.CssSelector(".tag-remote")).Count, "커밋 행에 '서버' 태그 유지");
+            }
+        }
+        finally { try { Directory.Delete(baseDir, true); } catch { } }
+    }
+
     // ---------- 설정 탭 카테고리 / 검색 ----------
     private static bool IsShown(CcsApp app, string css)
     {

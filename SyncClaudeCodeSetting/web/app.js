@@ -34,6 +34,10 @@ function loadAppSettings() {
 var appSettings = loadAppSettings();
 var isConfigured = null;   // 마지막 status 의 configured (자동 새로고침 가드)
 
+// 이력의 태그 위치가 status(미커밋 여부)에 의존하므로 두 메시지의 마지막 값을 함께 보관한다.
+var lastStatus = null;
+var lastLog = null;
+
 // C++ sync 모듈에 설정 전달 — 이후 log/push/bootstrap 명령부터 반영된다
 function sendConfigure() {
   window.parent.postMessage({
@@ -136,11 +140,48 @@ function renderStatus(s) {
   if (ahead === 0 && !dirty) $("pushSub").textContent = "반영할 변경 없음";
 }
 
+// 아직 커밋되지 않은 로컬 변경을 나타내는 이력 행.
+// 커밋 포인터(HEAD)가 서버와 같은 자리에 있어도 "이 PC 가 앞서 있다"를 태그 위치로 보이게 한다.
+function makeUncommittedRow(count) {
+  const li = document.createElement("li");
+  li.className = "hist-row uncommitted";
+
+  const time = document.createElement("span");
+  time.className = "hist-time";
+  time.textContent = "미반영";
+
+  const desc = document.createElement("span");
+  desc.className = "hist-desc";
+  const subj = document.createElement("span");
+  subj.className = "hist-subject";
+  subj.textContent = "아직 서버에 반영되지 않은 변경 " + count + "건";
+  desc.appendChild(subj);
+  desc.appendChild(makeTag("현재 PC", "tag-current"));
+
+  const hash = document.createElement("span");
+  hash.className = "hist-hash";
+  hash.textContent = "";
+
+  // 커밋이 아니라 되돌릴 대상이 없다. 다른 행과 열 정렬을 맞추기 위해 자리만 유지(disabled = 숨김).
+  const revert = document.createElement("button");
+  revert.className = "revert";
+  revert.textContent = "되돌리기";
+  revert.disabled = true;
+
+  li.append(time, desc, hash, revert);
+  return li;
+}
+
 function renderLog(m) {
   const list = $("histList");
   list.innerHTML = "";
   const items = m.items || [];
   $("histCount").textContent = items.length ? "최근 " + items.length + "건" : "";
+
+  // 미커밋 변경이 있으면 맨 위에 별도 행을 얹고 '현재 PC' 태그를 그 행이 가진다.
+  const dirtyCount = (lastStatus && lastStatus.configured !== false && !lastStatus.clean)
+    ? (lastStatus.dirtyCount | 0) : 0;
+  if (dirtyCount > 0) list.appendChild(makeUncommittedRow(dirtyCount));
 
   for (const it of items) {
     const li = document.createElement("li");
@@ -158,7 +199,8 @@ function renderLog(m) {
     desc.appendChild(subj);
     const isHead = it.hash === m.head;
     const isRemote = it.hash === m.remote;
-    if (isHead) desc.appendChild(makeTag("현재 PC", "tag-current"));
+    // 미커밋 행이 있으면 '현재 PC' 는 그쪽이 가지므로 커밋 행에는 붙이지 않는다.
+    if (isHead && dirtyCount === 0) desc.appendChild(makeTag("현재 PC", "tag-current"));
     if (isRemote) desc.appendChild(makeTag("서버", "tag-remote"));
 
     const hash = document.createElement("span");
@@ -187,9 +229,14 @@ function handle(msg) {
   switch (msg.type) {
     case "status":
       isConfigured = msg.configured !== false;
+      lastStatus = msg;
       renderStatus(msg);
+      if (lastLog) renderLog(lastLog);   // 태그 위치가 미커밋 여부에 의존 → 이력 재렌더
       break;
-    case "log":    renderLog(msg); break;
+    case "log":
+      lastLog = msg;
+      renderLog(msg);
+      break;
     case "result":
       showToast(msg.message + (msg.detail ? " — " + msg.detail : ""), msg.ok);
       // 부트스트랩 등 결과 직후, 초기 설정 화면이면 상태를 다시 조회(성공 시 전환/실패 시 버튼 복구)
