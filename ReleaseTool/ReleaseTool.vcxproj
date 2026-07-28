@@ -12,20 +12,20 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
-    <ProjectGuid>{6E0A2B3C-4D5E-4F60-B7C8-D9E0F1A2B3C4}</ProjectGuid>
-    <RootNamespace>Core</RootNamespace>
+    <ProjectGuid>{9B3D5F7A-2C4E-4D6F-A8B9-3C5D7E9F0A1B}</ProjectGuid>
+    <RootNamespace>ReleaseTool</RootNamespace>
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -43,8 +43,8 @@
       <WarningLevel>Level3</WarningLevel>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(Webview2Native)\include;$(ProjectDir)include;$(SolutionDir)shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>CORE_EXPORTS;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(Webview2Native)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -77,25 +77,23 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\host.cpp" />
-    <ClCompile Include="src\modules.cpp" />
-    <ClCompile Include="src\router.cpp" />
+    <ClCompile Include="src\build.cpp" />
+    <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\core_api.h" />
-    <ClInclude Include="src\core_internal.h" />
-    <ClInclude Include="$(SolutionDir)shared\module_api.h" />
+    <ClInclude Include="src\releasetool.h" />
   </ItemGroup>
   <ItemGroup>
-    <!-- web 은 CustomBuild 로 등록한다. <None> + PostBuildEvent 조합은 HTML/CSS 만 고쳤을 때
-         VS 의 최신 여부 검사에 걸리지 않아 빌드가 통째로 스킵되고, 복사도 일어나지 않는다(실측).
-         CustomBuild 는 Inputs/Outputs 가 검사 대상이라 web 만 바꿔도 반영된다.
-         web 파일을 새로 추가하면 아래 Include 목록에도 넣어야 한다. -->
-    <CustomBuild Include="web\index.html;web\shell.css">
-      <Message>Copying Core web shell: %(Filename)%(Extension)</Message>
-      <Command>if not exist "$(OutDir)web\" mkdir "$(OutDir)web\"
-copy /Y "%(FullPath)" "$(OutDir)web\" &gt;nul</Command>
-      <Outputs>$(OutDir)web\%(Filename)%(Extension)</Outputs>
+    <!-- web 을 CustomBuild 로 등록해 exe 옆 releasetool\ 로 복사한다.
+         PostBuildEvent 를 쓰면 안 되는 이유: HTML/JS 만 고쳤을 때 VS 의 최신 여부 검사가
+         <None> 항목을 보지 않아 빌드를 통째로 건너뛰고, PostBuildEvent 도 돌지 않아
+         F5 가 옛 화면을 띄운다(실측). CustomBuild 는 Inputs/Outputs 가 검사 대상이라 반영된다.
+         앱 셸(web\)과 섞지 않는 것도 목적 — 인스톨러는 web\ 만 담으므로 설치본에 들어가지 않는다. -->
+    <CustomBuild Include="web\index.html;web\app.css;web\app.js">
+      <Message>Copying ReleaseTool web: %(Filename)%(Extension)</Message>
+      <Command>if not exist "$(OutDir)releasetool\" mkdir "$(OutDir)releasetool\"
+copy /Y "%(FullPath)" "$(OutDir)releasetool\" &gt;nul</Command>
+      <Outputs>$(OutDir)releasetool\%(Filename)%(Extension)</Outputs>
     </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

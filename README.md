@@ -17,6 +17,7 @@ statusLine 렌더링은 PowerShell 런타임(`StatusLine.ps1`)이 그대로 담�
 | `Core` | dll | 창 + WebView2 호스트 + 좌측 탭 셸 + 설정 화면 + 모듈 로더/라우터 |
 | `SyncClaudeCodeSetting` | dll | 설정 동기화 모듈 (git status/log/pull/push + 초기 설정) |
 | `ClaudeCodeStatusBar` | dll | 상태바 설정 모듈 (config.json 편집 + settings.json 적용) |
+| `ReleaseTool` | exe | 릴리스 도구 — 버전을 검증하고 인스톨러를 만든다 (개발용, 설치본에는 없음) |
 | `StatusLine.ps1` | ps1 | statusLine 런타임 (Claude Code 가 매 stdin 호출) |
 
 각 기능 모듈은 `shared/module_api.h` 의 C 계약(`Module_Info/Init/Handle`)을 export 하고,
@@ -44,13 +45,33 @@ statusLine 렌더링은 PowerShell 런타임(`StatusLine.ps1`)이 그대로 담�
 - ```powershell
   MSBuild ClaudeCodeStudio.sln /p:Configuration=Release /p:Platform=x64
   ```
-- 산출물: `bin/Release/` 에 `ClaudeCodeStudio.exe` + DLL 3개 + `web/`
+- 산출물: `bin/Release/` 에 `ClaudeCodeStudio.exe` + DLL 3개 + `web/` (그리고 개발용 `ReleaseTool.exe`)
 
 GUI 자동 테스트(E2E)는 `Tests/E2E.Net/` 에 있다. 앱 창이 화면에 뜨지 않도록 격리 데스크톱에서 실행한다:
 
 ```powershell
 pwsh Tests\격리데스크톱러너.ps1 -Command 'dotnet test Tests\E2E.Net\ClaudeCodeStudio.E2E.csproj -c Debug'
 ```
+
+## 인스톨러 만들기
+
+`bin/Release/ReleaseTool.exe` 를 실행하면 창이 뜬다. 새 버전을 입력하고 **[인스톨러 생성]** 을 누르면
+빌드부터 패키징까지 진행되고 로그가 그 자리에 표시된다. 콘솔에서 바로 돌려도 된다:
+
+```powershell
+Build.bat 1.0.1                # 빌드 + 스테이징 + 인스톨러
+Build.bat 1.0.1 --skip-build   # 기존 bin\Release 재사용
+```
+
+버전은 `MAJOR.MINOR.PATCH` 형식이어야 하고, **직전 발행 버전(`installer/VERSION`)보다 높아야** 한다.
+낮거나 같으면 생성되지 않는다. 성공하면 `installer/VERSION` 이 갱신되어 다음 기준이 된다.
+
+산출물은 `Shipping/ClaudeCodeStudio-Setup-<버전>.exe` 이며, 같은 폴더의 `Shipping/<버전>/` 에는
+설치 없이 바로 실행할 수 있는 파일 일습이 남는다. NSIS 3.x 가 필요하다.
+
+설치본은 `%LOCALAPPDATA%\Programs\ClaudeCodeStudio` 에 설치되며 관리자 권한이 필요 없다.
+Visual C++ 런타임(`vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll`)을 함께 담으므로
+재배포 패키지가 없는 PC 에서도 실행된다.
 
 ## 요구 사항
 

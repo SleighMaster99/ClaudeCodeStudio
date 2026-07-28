@@ -10,6 +10,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SyncClaudeCodeSetting", "Sy
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ClaudeCodeStatusBar", "ClaudeCodeStatusBar\ClaudeCodeStatusBar.vcxproj", "{8A2C4E6F-1B3D-4C5E-9F7A-2B4C6D8E0F1A}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ReleaseTool", "ReleaseTool\ReleaseTool.vcxproj", "{9B3D5F7A-2C4E-4D6F-A8B9-3C5D7E9F0A1B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -32,6 +34,10 @@ Global
 		{8A2C4E6F-1B3D-4C5E-9F7A-2B4C6D8E0F1A}.Debug|x64.Build.0 = Debug|x64
 		{8A2C4E6F-1B3D-4C5E-9F7A-2B4C6D8E0F1A}.Release|x64.ActiveCfg = Release|x64
 		{8A2C4E6F-1B3D-4C5E-9F7A-2B4C6D8E0F1A}.Release|x64.Build.0 = Release|x64
+		{9B3D5F7A-2C4E-4D6F-A8B9-3C5D7E9F0A1B}.Debug|x64.ActiveCfg = Debug|x64
+		{9B3D5F7A-2C4E-4D6F-A8B9-3C5D7E9F0A1B}.Debug|x64.Build.0 = Debug|x64
+		{9B3D5F7A-2C4E-4D6F-A8B9-3C5D7E9F0A1B}.Release|x64.ActiveCfg = Release|x64
+		{9B3D5F7A-2C4E-4D6F-A8B9-3C5D7E9F0A1B}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

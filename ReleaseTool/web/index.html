@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ReleaseTool</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="win">
+
+    <!-- 타이틀바 -->
+    <div class="titlebar">
+      <div class="tb-id">
+        <span class="tb-mark" aria-hidden="true">◆</span>
+        <span class="tb-name">ReleaseTool</span>
+        <span class="tb-path" id="repoPath">…</span>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <!-- 버전 카드 -->
+      <section class="vercard" id="verCard">
+        <div class="ver-head">
+          <span class="dot" aria-hidden="true"></span>
+          <div>
+            <h2 class="ver-title" id="verTitle">버전을 입력하세요</h2>
+            <p class="ver-sub" id="verSub">최신 버전보다 높은 값이어야 생성할 수 있습니다.</p>
+          </div>
+          <span class="ver-badge" id="verBadge">대기</span>
+        </div>
+
+        <div class="ver-flow">
+          <div class="vnode">
+            <span class="vnode-label">최신 버전</span>
+            <span class="vnode-val" id="latestVal">…</span>
+            <span class="vnode-src">installer\VERSION</span>
+          </div>
+
+          <div class="ver-arrow" aria-hidden="true">→</div>
+
+          <div class="vnode vnode-input">
+            <label class="vnode-label" for="verInput">새 버전</label>
+            <!-- placeholder 는 app.js 가 installer\VERSION 의 다음 패치로 채운다 -->
+            <input id="verInput" type="text" inputmode="decimal"
+                   autocomplete="off" spellcheck="false" aria-describedby="verMsg" />
+            <span class="vnode-src">MAJOR.MINOR.PATCH</span>
+          </div>
+        </div>
+
+        <p class="ver-msg" id="verMsg" role="status">
+          <span class="mark" aria-hidden="true">·</span>
+          <span id="verMsgText">버전을 입력하면 여기에 검증 결과가 표시됩니다.</span>
+        </p>
+      </section>
+
+      <!-- 옵션 + 실행 -->
+      <div class="runrow">
+        <label class="opt">
+          <input type="checkbox" id="optSkipBuild" />
+          빌드 건너뛰기 <span class="opt-dim">(기존 bin\Release 사용)</span>
+        </label>
+
+        <button class="go" id="goBtn" type="button" disabled>
+          <span class="go-arrow" aria-hidden="true">▸</span>
+          <span class="go-text">
+            <b>인스톨러 생성</b>
+            <small id="goSub">버전 검증 대기 중</small>
+          </span>
+        </button>
+      </div>
+
+      <!-- 배포 -->
+      <section class="pubcard p-none" id="pubCard">
+        <span class="pub-dot" aria-hidden="true"></span>
+        <div class="pub-text">
+          <div class="pub-line1">
+            <span class="pub-tag" id="pubTag">—</span>
+            <span class="pub-file" id="pubFile"></span>
+          </div>
+          <span class="pub-note" id="pubNote">먼저 인스톨러를 만드세요.</span>
+        </div>
+        <button class="pub-btn" id="pubBtn" type="button" disabled>
+          <span class="pub-btn-arrow" aria-hidden="true">↑</span>
+          <span class="pub-btn-text">
+            <b>GitHub 에 배포</b>
+            <small id="pubBtnSub">산출물 없음</small>
+          </span>
+        </button>
+      </section>
+
+      <!-- 로그 -->
+      <section class="log">
+        <div class="log-head">
+          <span class="sec-label">로그</span>
+          <button class="log-copy" id="copyBtn" type="button" hidden>복사</button>
+          <span class="log-step" id="logStep">—</span>
+        </div>
+        <div class="log-body" id="logBody">
+          <p class="log-empty">버튼을 누르면 실행 출력이 여기에 흐릅니다.</p>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 상태바 -->
+    <div class="statusbar">
+      <span class="probe" id="probeMsbuild"><span class="probe-dot" aria-hidden="true"></span>MSBuild</span>
+      <span class="sb-sep">·</span>
+      <span class="probe" id="probeNsis"><span class="probe-dot" aria-hidden="true"></span>NSIS</span>
+      <span class="sb-sep">·</span>
+      <span class="probe" id="probeGh"><span class="probe-dot" aria-hidden="true"></span>gh</span>
+      <span class="sb-sep">·</span>
+      <span class="sb-out" id="sbBranch">브랜치 —</span>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

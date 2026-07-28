@@ -20,11 +20,19 @@ statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). �
 | `Core/` | dll | 창 + WebView2 호스트 + 탭 셸 + 모듈 로더(`modules.cpp`)/라우터(`router.cpp`)/호스트(`host.cpp`) |
 | `SyncClaudeCodeSetting/` | dll | 동기화 모듈 (`sync.cpp`: git status/log/pull/push + 초기 설정) |
 | `ClaudeCodeStatusBar/` | dll | 상태바 모듈 (`statusbar.cpp`: config.json I/O + settings.json apply) |
+| `ReleaseTool/` | exe | 릴리스 도구 — 별도 창(창+WebView2 자체 보유). 버전 검증 후 `Build.bat` 구동. **설치본 미포함** |
 | `shared/module_api.h` | 헤더 | 모듈 C 계약 (`Module_Info/Init/Handle`, `PostToUiFn`) |
+| `Build.bat` | 스크립트 | 릴리스 파이프라인 (버전 검증 → 빌드 → 스테이징 → NSIS → 이력 갱신) |
+| `installer/` | 인스톨러 | `ClaudeCodeStudio.nsi` + `VERSION`(발행 이력) + `redist/`(VC++ CRT 3종) |
 | `StatusLine.ps1`, `config.json` | 런타임 | statusLine 렌더러 + 레이아웃(`rows`)/표시 옵션(`options`) |
 | `usage_config.json` | (미사용) | 플랜 한도 오버라이드용 파일. `Get-PlanLimits` 가 정의만 되어 있고 호출되지 않아 **현재 렌더에 영향 없음** |
 
 각 모듈 dll 은 자기 `web/` UI(HTML/JS)를 소유하고, 빌드 시 `bin/Release/web/<모듈>/` 로 복사된다.
+복사는 vcxproj 의 **`CustomBuild` 항목**이 한다 — **web 파일을 추가하면 vcxproj 의 `Include` 목록에도 넣어야** 배포된다.
+`<None>` + `PostBuildEvent` 로 두면 HTML/JS 만 고쳤을 때 VS 의 최신 여부 검사에 걸리지 않아
+빌드가 통째로 스킵되고 복사도 일어나지 않는다(F5 가 옛 화면을 띄운다 — 실측).
+`ReleaseTool` 은 모듈이 아니라 독립 exe 라 자기 web 을 `bin/Release/releasetool/` 에 둔다 —
+인스톨러가 `web/` 만 담으므로 이 위치면 설치본에 딸려 들어가지 않는다.
 
 ## 빌드
 
@@ -33,6 +41,31 @@ statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). �
 - MSVC 한글 리터럴 → **`/utf-8` 필수**. 산출물: `bin/Release/`
 - 실행 검증: 격리 데스크톱(`CreateDesktop` + `STARTUPINFO.lpDesktop`) + `PrintWindow`(flag 2) 캡처 — 활성 세션/포그라운드 무간섭
 
+## 릴리스 (인스톨러 생성)
+
+`Build.bat` 이 전 과정을 수행하고, `ReleaseTool.exe` 는 그것을 띄우는 창일 뿐이다.
+
+```
+bin\Release\ReleaseTool.exe        창에서 버전 입력 → [인스톨러 생성]
+Build.bat 1.0.1                    콘솔에서 직접 (CI 용)
+Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
+```
+
+5단계: 버전 검증 → MSBuild → `Shipping\<ver>\` 스테이징 → makensis → `installer\VERSION` 갱신.
+산출물 `Shipping\ClaudeCodeStudio-Setup-<ver>.exe` (`Shipping/` 은 .gitignore).
+
+**버전 규칙**: `MAJOR.MINOR.PATCH`, 선행 0 금지, **`installer\VERSION`(마지막 발행분)보다 높아야** 통과.
+생성 성공 시 `VERSION` 이 자동 갱신되어 다음 기준선이 된다. `0.0.0` = 아직 발행 없음.
+
+**주의할 점 세 가지**:
+- `Build.bat` 은 솔루션 전체가 아니라 **`-t:ClaudeCodeStudio`** 로 빌드한다. ProjectReference 로 Core+모듈 2개는
+  함께 빌드되지만 `ReleaseTool` 은 빠진다 — 스크립트를 구동 중인 프로세스가 자기 exe 를 덮어쓸 수 없기 때문.
+- `ClaudeCodeStudio.nsi` 는 `/DVERSION /DSTAGE_DIR /DREDIST_DIR /DOUT_FILE` 을 **요구**한다.
+  인자 없이 makensis 를 직접 부르면 `!error` 로 중단된다.
+- `installer/redist/` 의 **VC++ CRT 3종은 필수**다. Release 가 `/MD` 링크라 이것이 없으면 재배포 패키지가 없는
+  PC 에서 실행 자체가 안 된다. per-user 설치라 재배포 패키지를 깔 수 없어(관리자 권한) 앱 폴더에 동봉한다.
+  툴셋을 올리면 `VC\Redist\MSVC\<ver>\x64\Microsoft.VC143.CRT\` 에서 3개를 다시 복사한다.
+
 ## 모듈 아키텍처
 
 - **로딩**: `Core/src/modules.cpp` 의 `kModuleDlls[]` 에 dll 명을 하드코딩 → 시작 시 `LoadLibrary` + `GetProcAddress` 로 `Module_*` 바인딩 (D11 "암시적" = 목록 하드코딩).
@@ -40,7 +73,7 @@ statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). �
   - iframe(모듈 web) → `window.parent.postMessage({module,cmd,arg})` → Core 셸이 `chrome.webview.postMessage(JSON)` → C++
   - C++ `WebMessageReceived` → `Router_Handle` → `module` 로 모듈 조회 → `Module_Handle(json)` (cmd/arg 해석은 모듈 몫)
   - 모듈이 `post` 콜백 호출 → Core 가 `{module,payload}` **봉투**로 씌워 회신 → Core 셸이 `env.module` iframe 에 payload 중계
-- 새 모듈 추가: dll 프로젝트(`MODULE_EXPORTS` + `$(SolutionDir)shared` include) + `Module_*` 구현 + `kModuleDlls` 등록 + Core 셸 `index.html` 에 탭/iframe(`frames` 맵).
+- 새 모듈 추가: dll 프로젝트(`MODULE_EXPORTS` + `$(SolutionDir)shared` include) + `Module_*` 구현 + `kModuleDlls` 등록 + Core 셸 `index.html` 에 탭/iframe(`frames` 맵) + vcxproj 에 web 파일 `CustomBuild` 등록.
 
 ## StatusLine.ps1 런타임
 
