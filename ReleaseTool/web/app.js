@@ -1,15 +1,30 @@
-// ReleaseTool UI — 버전 검증(로컬) + Build.bat 실행 요청/로그 표시(C++ 경유).
+// ReleaseTool UI — 버전 검증(로컬) + Build.bat / gh 실행 요청·로그 표시(C++ 경유).
 //
-//   JS  -> C++ : {cmd:"init"} / {cmd:"build", version, skipBuild}
-//   C++ -> JS  : {type:"init", latest, repo, msbuild, nsis, running}
-//                {type:"log",  line}
-//                {type:"done", code, latest?, setup?}
+//   JS  -> C++ : {cmd:"init"}
+//                {cmd:"build",   version, skipBuild}
+//                {cmd:"publish", version}
+//   C++ -> JS  : {type:"init", latest, repo, msbuild, nsis, gh, running,
+//                              setup, setupPath, setupKb, branch}
+//                {type:"log",       line}
+//                {type:"done",      code, latest?, setup?, setupPath?, setupKb?, branch?}
+//                {type:"pubdone",   code}
+//                {type:"pubstatus", data:{released, url, version}}
 (function () {
   "use strict";
 
   var latest     = "0.0.0";      // installer\VERSION (C++ 이 준다)
   var latestNums = [0, 0, 0];
   var running    = false;
+
+  // 배포 카드가 보고 판단하는 상태 전부
+  var pub = {
+    setup:    false,   // Shipping 에 설치파일이 있는가
+    setupKb:  0,
+    branch:   "",
+    gh:       false,   // gh.exe 가 PATH 에 있는가
+    released: false,   // 이미 배포된 버전인가 (원격 조회 결과)
+    url:      ""
+  };
 
   var card    = document.getElementById("verCard");
   var input   = document.getElementById("verInput");
@@ -26,6 +41,14 @@
   var copyBtn = document.getElementById("copyBtn");
   var skipBox = document.getElementById("optSkipBuild");
   var latestEl = document.getElementById("latestVal");
+
+  var pubCard   = document.getElementById("pubCard");
+  var pubTag    = document.getElementById("pubTag");
+  var pubFile   = document.getElementById("pubFile");
+  var pubNote   = document.getElementById("pubNote");
+  var pubBtn    = document.getElementById("pubBtn");
+  var pubBtnSub = document.getElementById("pubBtnSub");
+  var sbBranch  = document.getElementById("sbBranch");
 
   // ---------- host bridge ----------
   function post(obj) {
@@ -68,7 +91,7 @@
     input.placeholder = nextOf(latestNums);
   }
 
-  // ---------- 상태 적용 ----------
+  // ---------- 생성 카드 ----------
   function setState(kind, o) {
     card.classList.remove("is-ok", "is-bad", "is-busy");
     if (kind !== "idle") card.classList.add("is-" + kind);
@@ -137,6 +160,45 @@
     });
   }
 
+  // ---------- 배포 카드 ----------
+  // 상태는 pub 객체 하나에서 파생된다. 순서가 곧 우선순위다.
+  function refreshPub() {
+    if (running) return;
+
+    sbBranch.textContent = "브랜치 " + (pub.branch || "—");
+    pubTag.textContent   = pub.setup ? ("v" + latest) : "—";
+    pubFile.textContent  = pub.setup
+      ? ("ClaudeCodeStudio-Setup-" + latest + ".exe · " + pub.setupKb.toLocaleString() + " KB")
+      : "";
+
+    var cls, note, sub2, enable;
+    if (!pub.setup) {
+      cls = "none";  note = "먼저 인스톨러를 만드세요.";  sub2 = "산출물 없음";  enable = false;
+    } else if (pub.released) {
+      cls = "done";  note = "배포됨 · " + (pub.url || "GitHub Release");  sub2 = "배포 완료";  enable = false;
+    } else if (!pub.gh) {
+      cls = "block"; note = "gh 를 찾을 수 없습니다. GitHub CLI 를 설치하세요.";  sub2 = "gh 없음";  enable = false;
+    } else if (pub.branch !== "main") {
+      cls = "block";
+      note = "현재 " + (pub.branch || "?") + " — main 에서만 배포할 수 있습니다.";
+      sub2 = "main 아님"; enable = false;
+    } else {
+      cls = "ready"; note = "아직 배포되지 않았습니다.";  sub2 = "태그 + Release 생성";  enable = true;
+    }
+
+    pubCard.className   = "pubcard p-" + cls;
+    pubNote.textContent = note;
+    pubBtnSub.textContent = sub2;
+    pubBtn.disabled     = !enable;
+  }
+
+  function setPubBusy(note) {
+    pubCard.className     = "pubcard p-busy";
+    pubNote.textContent   = note;
+    pubBtn.disabled       = true;
+    pubBtnSub.textContent = "실행 중…";
+  }
+
   // ---------- 로그 ----------
   function clearLog() {
     logBody.innerHTML = "";
@@ -146,8 +208,9 @@
 
   function line(text) {
     var cls = "";
-    if (/^\[ERROR\]/.test(text))      cls = "err";
-    else if (/^\[OK\]/.test(text))    cls = "ok";
+    if (/^\[ERROR\]/.test(text))         cls = "err";
+    else if (/^\[OK\]/.test(text))       cls = "ok";
+    else if (/^>/.test(text))            cls = "cmd";
     else if (/^\[\d+\/\d+\]/.test(text)) {
       cls = "step";
       var m = text.match(/^\[(\d+)\/(\d+)\]/);
@@ -166,7 +229,7 @@
     if (atBottom) logBody.scrollTop = logBody.scrollHeight;   // 위로 올려 읽는 중이면 방해하지 않는다
   }
 
-  // ---------- 실행 ----------
+  // ---------- 인스톨러 생성 ----------
   function run() {
     if (running || goBtn.disabled) return;
     var r = parse(input.value);
@@ -176,6 +239,7 @@
     clearLog();
     input.disabled   = true;
     skipBox.disabled = true;
+    setPubBusy("인스톨러를 만드는 중입니다.");
 
     setState("busy", {
       title: "인스톨러 생성 중",
@@ -195,12 +259,18 @@
 
     if (m.code === 0) {
       if (m.latest) setLatest(m.latest);
+      // 새 버전이 나왔으니 배포 상태를 처음부터 다시 본다 (released 는 원격 조회가 채운다).
+      pub.setup    = !!m.setup;
+      pub.setupKb  = m.setupKb || 0;
+      pub.branch   = m.branch || pub.branch;
+      pub.released = false;
+      pub.url      = "";
       logStep.textContent = "완료";
       setState("ok", {
         title: "생성 완료",
         sub:   "installer\\VERSION 이 " + latest + " 로 갱신되었습니다.",
         badge: "완료", mark: "✓",
-        msg:   m.setup || "",
+        msg:   m.setupPath || "",
         enable: false, goSub: "다음 버전을 입력하세요"
       });
       input.value = "";
@@ -214,6 +284,34 @@
         enable: false, goSub: "로그 확인 후 다시 시도"
       });
     }
+    refreshPub();
+  }
+
+  // ---------- 배포 ----------
+  function publish() {
+    if (running || pubBtn.disabled) return;
+    running = true;
+    clearLog();
+    input.disabled   = true;
+    skipBox.disabled = true;
+    goBtn.disabled   = true;
+    setPubBusy("GitHub 에 배포하는 중입니다.");
+    logStep.textContent = "배포";
+    post({ cmd: "publish", version: latest });
+  }
+
+  function pubFinish(m) {
+    running = false;
+    input.disabled   = false;
+    skipBox.disabled = false;
+    if (m.code === 0) {
+      logStep.textContent = "완료";
+      pub.released = true;          // URL 은 뒤이어 오는 pubstatus 가 채운다
+    } else {
+      logStep.textContent = "실패";
+    }
+    refreshPub();
+    validate();                     // 생성 버튼 상태 복구
   }
 
   // ---------- 호스트 메시지 ----------
@@ -225,13 +323,27 @@
       document.getElementById("repoPath").textContent = m.repo || "(repo 를 찾지 못했습니다)";
       document.getElementById("probeMsbuild").classList.toggle("off", !m.msbuild);
       document.getElementById("probeNsis").classList.toggle("off", !m.nsis);
-      if (m.repo) document.getElementById("outPath").textContent = "출력 " + m.repo + "\\Shipping\\";
-      running = !!m.running;
+      document.getElementById("probeGh").classList.toggle("off", !m.gh);
+      pub.setup   = !!m.setup;
+      pub.setupKb = m.setupKb || 0;
+      pub.branch  = m.branch || "";
+      pub.gh      = !!m.gh;
+      running     = !!m.running;
+      refreshPub();
       validate();
     } else if (m.type === "log") {
       line(m.line);
     } else if (m.type === "done") {
       finish(m);
+    } else if (m.type === "pubdone") {
+      pubFinish(m);
+    } else if (m.type === "pubstatus") {
+      var d = m.data || {};
+      // 조회를 보낸 뒤 버전이 바뀌었을 수 있다 — 지금 버전에 대한 답만 받는다.
+      if (d.version && d.version !== latest) return;
+      pub.released = !!d.released;
+      pub.url      = d.url || "";
+      refreshPub();
     }
   }
 
@@ -248,6 +360,7 @@
     if (e.key === "Enter" && !goBtn.disabled) run();
   });
   goBtn.addEventListener("click", run);
+  pubBtn.addEventListener("click", publish);
 
   copyBtn.addEventListener("click", function () {
     var text = Array.prototype.map.call(logBody.querySelectorAll(".ln-txt"),
@@ -273,5 +386,6 @@
   applyTheme();
 
   validate();
+  refreshPub();
   post({ cmd: "init" });
 })();

@@ -71,15 +71,34 @@
         </button>
       </div>
 
+      <!-- 배포 -->
+      <section class="pubcard p-none" id="pubCard">
+        <span class="pub-dot" aria-hidden="true"></span>
+        <div class="pub-text">
+          <div class="pub-line1">
+            <span class="pub-tag" id="pubTag">—</span>
+            <span class="pub-file" id="pubFile"></span>
+          </div>
+          <span class="pub-note" id="pubNote">먼저 인스톨러를 만드세요.</span>
+        </div>
+        <button class="pub-btn" id="pubBtn" type="button" disabled>
+          <span class="pub-btn-arrow" aria-hidden="true">↑</span>
+          <span class="pub-btn-text">
+            <b>GitHub 에 배포</b>
+            <small id="pubBtnSub">산출물 없음</small>
+          </span>
+        </button>
+      </section>
+
       <!-- 로그 -->
       <section class="log">
         <div class="log-head">
-          <span class="sec-label">빌드 로그</span>
+          <span class="sec-label">로그</span>
           <button class="log-copy" id="copyBtn" type="button" hidden>복사</button>
           <span class="log-step" id="logStep">—</span>
         </div>
         <div class="log-body" id="logBody">
-          <p class="log-empty">인스톨러 생성을 누르면 Build.bat 출력이 여기에 흐릅니다.</p>
+          <p class="log-empty">버튼을 누르면 실행 출력이 여기에 흐릅니다.</p>
         </div>
       </section>
 
@@ -91,7 +110,9 @@
       <span class="sb-sep">·</span>
       <span class="probe" id="probeNsis"><span class="probe-dot" aria-hidden="true"></span>NSIS</span>
       <span class="sb-sep">·</span>
-      <span class="sb-out" id="outPath">출력 Shipping\</span>
+      <span class="probe" id="probeGh"><span class="probe-dot" aria-hidden="true"></span>gh</span>
+      <span class="sb-sep">·</span>
+      <span class="sb-out" id="sbBranch">브랜치 —</span>
     </div>
 
   </div>

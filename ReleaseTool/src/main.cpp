@@ -30,7 +30,7 @@ static std::wstring g_webDir;
 
 static const wchar_t* kVirtualHost = L"releasetool.local";
 static const wchar_t* kStartUrl    = L"https://releasetool.local/index.html";
-static const int      kWinW = 900, kWinH = 760;
+static const int      kWinW = 900, kWinH = 860;   // 배포 카드가 들어가 세로가 늘었다
 
 // ---------- JSON ----------
 std::string JsonEscape(const std::string& s) {
@@ -78,17 +78,32 @@ void Ui_Post(const std::string& json) {
 }
 
 // ---------- 메시지 처리 ----------
+// 마지막 발행 버전의 배포 준비 상태(설치파일 유무·크기·브랜치)를 담아 보낸다.
+// 원격 조회(이미 배포됐는지)는 느려서 여기 넣지 않고, 별도 워커가 나중에 채운다.
+static std::string PubFields(const std::string& ver) {
+    return std::string(",\"setup\":")     + (Build_SetupExists(ver) ? "true" : "false")
+         + ",\"setupPath\":\""            + JsonEscape(Build_SetupPath(ver)) + "\""
+         + ",\"setupKb\":"                + std::to_string(Build_SetupSizeKb(ver))
+         + ",\"branch\":\""               + JsonEscape(Repo_Branch()) + "\"";
+}
+
 static void SendInit() {
+    std::string ver  = Repo_LatestVersion();
     std::wstring root = Repo_Root();
     std::string json =
         std::string("{\"type\":\"init\"")
-        + ",\"latest\":\"" + JsonEscape(Repo_LatestVersion()) + "\""
+        + ",\"latest\":\"" + JsonEscape(ver) + "\""
         + ",\"repo\":\""   + JsonEscape(Narrow(root)) + "\""
         + ",\"msbuild\":"  + (Repo_HasMsBuild() ? "true" : "false")
         + ",\"nsis\":"     + (Repo_HasNsis()    ? "true" : "false")
-        + ",\"running\":"  + (Build_Running()   ? "true" : "false")
+        + ",\"gh\":"       + (Repo_HasGh()      ? "true" : "false")
+        + ",\"running\":"  + (Job_Running()     ? "true" : "false")
+        + PubFields(ver)
         + "}";
     Ui_Post(json);
+
+    // 이미 배포됐는지는 원격에 물어봐야 안다 — gh 가 있을 때만, 그리고 비동기로.
+    if (Repo_HasGh() && Build_SetupExists(ver)) Publish_QueryStatus(g_hwnd, ver);
 }
 
 static void HandleWebMessage(const std::string& msg) {
@@ -96,10 +111,20 @@ static void HandleWebMessage(const std::string& msg) {
     if (cmd == "init") {
         SendInit();
     } else if (cmd == "build") {
-        if (Build_Running()) return;
+        if (Job_Running()) return;
         Build_Start(g_hwnd,
                     JsonGetStr(msg, "version"),
                     JsonGetStr(msg, "skipBuild") == "true");
+    } else if (cmd == "publish") {
+        if (Job_Running()) return;
+        std::string ver = JsonGetStr(msg, "version");
+        // UI 가 잠가두지만, 브랜치 확인은 여기서도 한다 — 태그가 엉뚱한 커밋에 붙으면 되돌리기 어렵다.
+        if (Repo_Branch() != "main") {
+            Ui_Post("{\"type\":\"log\",\"line\":\"[ERROR] main 브랜치에서만 배포할 수 있습니다.\"}");
+            Ui_Post("{\"type\":\"pubdone\",\"code\":1}");
+            return;
+        }
+        Publish_Start(g_hwnd, ver);
     }
 }
 
@@ -127,20 +152,38 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             std::unique_ptr<std::string> ver(reinterpret_cast<std::string*>(lp));
             int code = (int)wp;
             std::string json = "{\"type\":\"done\",\"code\":" + std::to_string(code);
-            // 성공했으면 VERSION 이 갱신됐다 — 새 기준선을 다시 읽어 UI 에 준다.
+            // 성공했으면 VERSION 이 갱신됐다 — 새 기준선과 배포 준비 상태를 다시 읽어 준다.
             if (code == 0) {
-                json += ",\"latest\":\"" + JsonEscape(Repo_LatestVersion()) + "\"";
-                json += ",\"setup\":\""  + JsonEscape(Build_SetupPath(*ver)) + "\"";
+                std::string latest = Repo_LatestVersion();
+                json += ",\"latest\":\"" + JsonEscape(latest) + "\"";
+                json += PubFields(latest);
             }
             json += "}";
             Ui_Post(json);
+            // 방금 만든 버전이 이미 배포돼 있는지 확인 (보통은 아니지만, 재생성한 경우가 있다).
+            if (code == 0 && Repo_HasGh()) Publish_QueryStatus(g_hwnd, Repo_LatestVersion());
+            return 0;
+        }
+
+        case WM_APP_PUB_DONE: {
+            std::unique_ptr<std::string> ver(reinterpret_cast<std::string*>(lp));
+            int code = (int)wp;
+            Ui_Post("{\"type\":\"pubdone\",\"code\":" + std::to_string(code) + "}");
+            // 성공했으면 릴리스 URL 을 받아와 카드에 링크를 건다.
+            if (code == 0) Publish_QueryStatus(g_hwnd, *ver);
+            return 0;
+        }
+
+        case WM_APP_PUB_STATUS: {
+            std::unique_ptr<std::string> frag(reinterpret_cast<std::string*>(lp));
+            Ui_Post("{\"type\":\"pubstatus\",\"data\":" + *frag + "}");
             return 0;
         }
 
         case WM_CLOSE:
-            // 빌드 중 창을 닫으면 자식 프로세스가 고아가 된다. 먼저 끝내게 한다.
-            if (Build_Running()) {
-                if (MessageBoxW(h, L"인스톨러를 만드는 중입니다. 그래도 닫을까요?",
+            // 작업 중 창을 닫으면 자식 프로세스가 고아가 된다. 먼저 끝내게 한다.
+            if (Job_Running()) {
+                if (MessageBoxW(h, L"작업이 진행 중입니다. 그래도 닫을까요?",
                                 L"ReleaseTool", MB_YESNO | MB_ICONWARNING) != IDYES)
                     return 0;
             }
