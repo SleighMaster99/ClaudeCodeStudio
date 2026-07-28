@@ -51,11 +51,6 @@
       <AdditionalLibraryDirectories>$(Webview2Native)\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>WebView2LoaderStatic.lib;ole32.lib;oleaut32.lib;shlwapi.lib;shell32.lib;advapi32.lib;version.lib;user32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <PostBuildEvent>
-      <!-- 앱 셸(web\)과 섞지 않는다. 인스톨러는 web\ 만 담으므로 여기 두면 설치본에 들어가지 않는다. -->
-      <Command>xcopy /Y /E /I /D "$(ProjectDir)web" "$(OutDir)releasetool\"</Command>
-      <Message>Copying ReleaseTool web next to the executable</Message>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -89,9 +84,17 @@
     <ClInclude Include="src\releasetool.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="web\index.html" />
-    <None Include="web\app.css" />
-    <None Include="web\app.js" />
+    <!-- web 을 CustomBuild 로 등록해 exe 옆 releasetool\ 로 복사한다.
+         PostBuildEvent 를 쓰면 안 되는 이유: HTML/JS 만 고쳤을 때 VS 의 최신 여부 검사가
+         <None> 항목을 보지 않아 빌드를 통째로 건너뛰고, PostBuildEvent 도 돌지 않아
+         F5 가 옛 화면을 띄운다(실측). CustomBuild 는 Inputs/Outputs 가 검사 대상이라 반영된다.
+         앱 셸(web\)과 섞지 않는 것도 목적 — 인스톨러는 web\ 만 담으므로 설치본에 들어가지 않는다. -->
+    <CustomBuild Include="web\index.html;web\app.css;web\app.js">
+      <Message>Copying ReleaseTool web: %(Filename)%(Extension)</Message>
+      <Command>if not exist "$(OutDir)releasetool\" mkdir "$(OutDir)releasetool\"
+copy /Y "%(FullPath)" "$(OutDir)releasetool\" &gt;nul</Command>
+      <Outputs>$(OutDir)releasetool\%(Filename)%(Extension)</Outputs>
+    </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

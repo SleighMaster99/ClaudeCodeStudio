@@ -27,14 +27,18 @@ std::string Narrow(const std::wstring& w) {
     WideCharToMultiByte(CP_UTF8, 0, w.data(), (int)w.size(), s.data(), n, nullptr, nullptr);
     return s;
 }
-// 자식 프로세스(MSBuild 등)는 콘솔 ANSI 코드페이지로 쓴다 — 한국어 Windows 면 949.
-// 그대로 UI 로 보내면 한글이 깨지므로 UTF-8 로 옮긴다.
-static std::string AcpToUtf8(const std::string& acp) {
-    if (acp.empty()) return "";
-    int n = MultiByteToWideChar(CP_ACP, 0, acp.data(), (int)acp.size(), nullptr, 0);
-    if (n <= 0) return acp;
+// 자식 출력의 인코딩은 도구마다 다르다 — MSBuild 는 UTF-8, ANSI 코드페이지로 쓰는 콘솔 도구도 있다.
+// 유효한 UTF-8 이면 그대로 두고, 아니면 ANSI(한국어 Windows = 949)로 보고 옮긴다.
+// (순수 ASCII 는 유효한 UTF-8 이라 그대로 통과한다 — Build.bat 자체 출력이 여기 해당)
+static std::string ToUtf8(const std::string& raw) {
+    if (raw.empty()) return "";
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                            raw.data(), (int)raw.size(), nullptr, 0) > 0)
+        return raw;
+    int n = MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), nullptr, 0);
+    if (n <= 0) return raw;
     std::wstring w(n, L'\0');
-    MultiByteToWideChar(CP_ACP, 0, acp.data(), (int)acp.size(), w.data(), n);
+    MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), w.data(), n);
     return Narrow(w);
 }
 static std::wstring EnvVar(const wchar_t* name) {
@@ -157,10 +161,10 @@ DWORD RunStreamed(HWND hwnd, const std::wstring& cmdline, const std::wstring& cw
             std::string line = acc.substr(0, nl);
             acc.erase(0, nl + 1);
             if (!line.empty() && line.back() == '\r') line.pop_back();
-            PostLine(hwnd, AcpToUtf8(line));
+            PostLine(hwnd, ToUtf8(line));
         }
     }
-    if (!acc.empty()) PostLine(hwnd, AcpToUtf8(acc));
+    if (!acc.empty()) PostLine(hwnd, ToUtf8(acc));
     CloseHandle(rd);
 
     WaitForSingleObject(pi.hProcess, INFINITE);

@@ -28,6 +28,9 @@ statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). �
 | `usage_config.json` | (미사용) | 플랜 한도 오버라이드용 파일. `Get-PlanLimits` 가 정의만 되어 있고 호출되지 않아 **현재 렌더에 영향 없음** |
 
 각 모듈 dll 은 자기 `web/` UI(HTML/JS)를 소유하고, 빌드 시 `bin/Release/web/<모듈>/` 로 복사된다.
+복사는 vcxproj 의 **`CustomBuild` 항목**이 한다 — **web 파일을 추가하면 vcxproj 의 `Include` 목록에도 넣어야** 배포된다.
+`<None>` + `PostBuildEvent` 로 두면 HTML/JS 만 고쳤을 때 VS 의 최신 여부 검사에 걸리지 않아
+빌드가 통째로 스킵되고 복사도 일어나지 않는다(F5 가 옛 화면을 띄운다 — 실측).
 `ReleaseTool` 은 모듈이 아니라 독립 exe 라 자기 web 을 `bin/Release/releasetool/` 에 둔다 —
 인스톨러가 `web/` 만 담으므로 이 위치면 설치본에 딸려 들어가지 않는다.
 
@@ -70,7 +73,7 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
   - iframe(모듈 web) → `window.parent.postMessage({module,cmd,arg})` → Core 셸이 `chrome.webview.postMessage(JSON)` → C++
   - C++ `WebMessageReceived` → `Router_Handle` → `module` 로 모듈 조회 → `Module_Handle(json)` (cmd/arg 해석은 모듈 몫)
   - 모듈이 `post` 콜백 호출 → Core 가 `{module,payload}` **봉투**로 씌워 회신 → Core 셸이 `env.module` iframe 에 payload 중계
-- 새 모듈 추가: dll 프로젝트(`MODULE_EXPORTS` + `$(SolutionDir)shared` include) + `Module_*` 구현 + `kModuleDlls` 등록 + Core 셸 `index.html` 에 탭/iframe(`frames` 맵).
+- 새 모듈 추가: dll 프로젝트(`MODULE_EXPORTS` + `$(SolutionDir)shared` include) + `Module_*` 구현 + `kModuleDlls` 등록 + Core 셸 `index.html` 에 탭/iframe(`frames` 맵) + vcxproj 에 web 파일 `CustomBuild` 등록.
 
 ## StatusLine.ps1 런타임
 

@@ -48,10 +48,6 @@
     <Link>
       <SubSystem>Windows</SubSystem>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy /Y /E /I /D "$(ProjectDir)web" "$(OutDir)web\sync\"</Command>
-      <Message>Copying Sync module web to web\sync</Message>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -84,9 +80,15 @@
     <ClInclude Include="$(SolutionDir)shared\module_api.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="web\index.html" />
-    <None Include="web\app.js" />
-    <None Include="web\app.css" />
+    <!-- web 은 CustomBuild 로 등록한다. <None> + PostBuildEvent 조합은 HTML/JS 만 고쳤을 때
+         VS 의 최신 여부 검사에 걸리지 않아 빌드가 통째로 스킵되고, 복사도 일어나지 않는다(실측).
+         web 파일을 새로 추가하면 아래 Include 목록에도 넣어야 한다. -->
+    <CustomBuild Include="web\index.html;web\app.js;web\app.css">
+      <Message>Copying Sync module web: %(Filename)%(Extension)</Message>
+      <Command>if not exist "$(OutDir)web\sync\" mkdir "$(OutDir)web\sync\"
+copy /Y "%(FullPath)" "$(OutDir)web\sync\" &gt;nul</Command>
+      <Outputs>$(OutDir)web\sync\%(Filename)%(Extension)</Outputs>
+    </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

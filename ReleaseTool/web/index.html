@@ -42,7 +42,8 @@
 
           <div class="vnode vnode-input">
             <label class="vnode-label" for="verInput">새 버전</label>
-            <input id="verInput" type="text" inputmode="decimal" placeholder="0.1.0"
+            <!-- placeholder 는 app.js 가 installer\VERSION 의 다음 패치로 채운다 -->
+            <input id="verInput" type="text" inputmode="decimal"
                    autocomplete="off" spellcheck="false" aria-describedby="verMsg" />
             <span class="vnode-src">MAJOR.MINOR.PATCH</span>
           </div>

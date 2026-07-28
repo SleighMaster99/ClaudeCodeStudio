@@ -64,6 +64,8 @@
     latest     = r.ok ? r.text : "0.0.0";
     latestNums = r.ok ? r.nums : [0, 0, 0];
     latestEl.textContent = latest;
+    // 현재 발행분의 다음 패치를 입력칸에 미리 보여준다 (그대로 쓰지 않아도 된다).
+    input.placeholder = nextOf(latestNums);
   }
 
   // ---------- 상태 적용 ----------
@@ -89,8 +91,8 @@
         title: "버전을 입력하세요",
         sub:   "최신 버전보다 높은 값이어야 생성할 수 있습니다.",
         badge: "대기", mark: "·",
-        msg:   "버전을 입력하면 여기에 검증 결과가 표시됩니다.",
-        enable: false, goSub: "버전 검증 대기 중"
+        msg:   "권장 " + nextOf(latestNums) + " — 최신 " + latest + " 의 다음 패치입니다.",
+        enable: false, goSub: "권장 " + nextOf(latestNums)
       });
       return;
     }

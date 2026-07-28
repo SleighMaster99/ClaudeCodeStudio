@@ -51,10 +51,6 @@
       <AdditionalLibraryDirectories>$(Webview2Native)\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>WebView2LoaderStatic.lib;ole32.lib;oleaut32.lib;shlwapi.lib;shell32.lib;advapi32.lib;version.lib;user32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy /Y /E /I /D "$(ProjectDir)web" "$(OutDir)web\"</Command>
-      <Message>Copying Core web shell next to the executable</Message>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -91,8 +87,16 @@
     <ClInclude Include="$(SolutionDir)shared\module_api.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="web\index.html" />
-    <None Include="web\shell.css" />
+    <!-- web 은 CustomBuild 로 등록한다. <None> + PostBuildEvent 조합은 HTML/CSS 만 고쳤을 때
+         VS 의 최신 여부 검사에 걸리지 않아 빌드가 통째로 스킵되고, 복사도 일어나지 않는다(실측).
+         CustomBuild 는 Inputs/Outputs 가 검사 대상이라 web 만 바꿔도 반영된다.
+         web 파일을 새로 추가하면 아래 Include 목록에도 넣어야 한다. -->
+    <CustomBuild Include="web\index.html;web\shell.css">
+      <Message>Copying Core web shell: %(Filename)%(Extension)</Message>
+      <Command>if not exist "$(OutDir)web\" mkdir "$(OutDir)web\"
+copy /Y "%(FullPath)" "$(OutDir)web\" &gt;nul</Command>
+      <Outputs>$(OutDir)web\%(Filename)%(Extension)</Outputs>
+    </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
