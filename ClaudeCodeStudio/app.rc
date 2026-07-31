@@ -1,0 +1,5 @@
+// ClaudeCodeStudio 앱 아이콘 — 탐색기/바로가기/작업표시줄 표시용.
+// Core 창 클래스도 IDI_APP_ICON 으로 이 리소스를 로드한다 (shared/resource_ids.h 계약).
+#include "../shared/resource_ids.h"
+
+IDI_APP_ICON ICON "..\\assets\\logo\\logo.ico"
