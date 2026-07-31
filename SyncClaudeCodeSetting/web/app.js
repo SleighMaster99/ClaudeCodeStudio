@@ -15,8 +15,9 @@ try {
 const BUSY = {
   pull:      { title: "서버에서 가져오는 중…",    desc: "서버 설정을 이 PC 에 적용합니다" },
   push:      { title: "서버에 반영하는 중…",      desc: "커밋 후 업로드합니다" },
-  refresh:   { title: "서버 상태를 확인하는 중…", desc: "원격에서 최신 정보를 가져옵니다" },
-  bootstrap: { title: "초기 설정 중…",            desc: "저장소를 준비하고 서버 설정을 가져옵니다" }
+  refresh:    { title: "서버 상태를 확인하는 중…", desc: "원격에서 최신 정보를 가져옵니다" },
+  bootstrap:  { title: "초기 설정 중…",            desc: "저장소를 준비하고 서버 설정을 가져옵니다" },
+  createRepo: { title: "저장소를 만드는 중…",      desc: "GitHub 에 저장소를 만들고 설정을 올립니다" }
 };
 let busyCmd = null;
 let busyTimer = null;
@@ -68,6 +69,10 @@ function loadAppSettings() {
 var appSettings = loadAppSettings();
 var isConfigured = null;   // 마지막 status 의 configured (자동 새로고침 가드)
 
+// ----- 초기 설정 화면 상태 -----
+var ghAccount = "";        // gh 로그인 계정 ('새로 만들기' 모드의 소유자)
+var ghAsked = false;       // ghInfo 는 미설정을 처음 확인했을 때 한 번만 조회한다
+
 // 이력의 태그 위치가 status(미커밋 여부)에 의존하므로 두 메시지의 마지막 값을 함께 보관한다.
 var lastStatus = null;
 var lastLog = null;
@@ -106,6 +111,32 @@ function showToast(text, ok) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 4000);
 }
 
+// 초기 설정 방식(직접 입력 / 새로 만들기) 전환 — 입력 영역과 안내 문구를 함께 바꾼다.
+function applySetupMode() {
+  const isNew = $("modeNew").checked;
+  $("paneUrl").hidden = isNew;
+  $("paneNew").hidden = !isNew;
+  $("setupNote").textContent = isNew
+    ? "저장소를 만든 뒤 이 PC 의 설정을 첫 커밋으로 올립니다."
+    : "서버에 설정이 있으면 가져오고, 빈 저장소면 이 PC 설정을 올립니다. 덮어쓰기 전 기존 설정은 .sync-backup 에 백업됩니다.";
+}
+
+// gh 설치/로그인 여부에 따라 '새로 만들기' 모드를 열거나 잠근다.
+function applyGhInfo(m) {
+  ghAccount = m.account || "";
+  const radio = $("modeNew");
+  const ready = !!(m.installed && m.loggedIn && ghAccount);
+  radio.disabled = !ready;
+  $("ghState").textContent = ready ? "✓ " + ghAccount
+    : (m.installed ? "gh 로그인 필요" : "gh CLI 미설치");
+  if (!ready && radio.checked) { $("modeUrl").checked = true; }
+  applySetupMode();
+
+  // 인스톨러가 남긴 주소는 아직 아무것도 채워지지 않았을 때만 제안한다
+  const ru = $("repoUrl");
+  if (ru && !ru.value && m.suggestedRepo) ru.value = m.suggestedRepo;
+}
+
 function renderStatus(s) {
   const setup = $("setup");
   const body = document.querySelector(".body");
@@ -115,7 +146,8 @@ function renderStatus(s) {
     setup.hidden = false;
     if (body) body.style.display = "none";
     const sb = $("setupBtn");
-    if (sb) { sb.disabled = false; sb.textContent = "초기 설정 시작"; }
+    if (sb) { sb.disabled = false; sb.textContent = "시작"; }
+    if (!ghAsked) { ghAsked = true; send("ghInfo"); }
     return;
   }
   setup.hidden = true;
@@ -268,6 +300,9 @@ function handle(msg) {
       renderStatus(msg);
       if (lastLog) renderLog(lastLog);   // 태그 위치가 미커밋 여부에 의존 → 이력 재렌더
       break;
+    case "gh":
+      applyGhInfo(msg);
+      break;
     case "log":
       hideBusy();          // 모든 원격 작업이 마지막에 log 를 보낸다
       lastLog = msg;
@@ -309,8 +344,27 @@ $("remoteSave").addEventListener("click", () => {
   if (u) send("setRemote", u);
 });
 
+$("modeUrl").addEventListener("change", applySetupMode);
+$("modeNew").addEventListener("change", applySetupMode);
+
 $("setupBtn").addEventListener("click", function () {
+  // '새로 만들기' 는 owner/repo/private 을 함께 보내야 해서 send() 대신 직접 구성한다.
+  if ($("modeNew").checked) {
+    const name = $("newRepoName").value.trim();
+    if (!name)      { showToast("저장소 이름을 입력하세요", false); return; }
+    if (!ghAccount) { showToast("GitHub 로그인을 확인할 수 없습니다", false); return; }
+    this.disabled = true;
+    this.textContent = "설정 중…";
+    showBusy("createRepo");
+    window.parent.postMessage({
+      module: "sync", cmd: "createRepo",
+      owner: ghAccount, repo: name,
+      private: $("newRepoPrivate").checked ? "true" : "false"
+    }, "*");
+    return;
+  }
   const url = $("repoUrl").value.trim();
+  if (!url) { showToast("저장소 URL 을 입력하세요", false); return; }
   this.disabled = true;
   this.textContent = "설정 중…";
   send("bootstrap", url);
@@ -319,6 +373,7 @@ $("setupBtn").addEventListener("click", function () {
 // 시작 시퀀스: 설정을 C++ 모듈에 먼저 전달(이력 개수 등) → 상태 조회.
 // '시작 시 원격 확인' 이 켜져 있으면 fetch 포함 새로고침으로 최신 여부를 바로 반영한다.
 sendConfigure();
+applySetupMode();
 if (appSettings.repoUrl) {
   var __ru = $("repoUrl");
   if (__ru) __ru.value = appSettings.repoUrl;

@@ -66,6 +66,25 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
   PC 에서 실행 자체가 안 된다. per-user 설치라 재배포 패키지를 깔 수 없어(관리자 권한) 앱 폴더에 동봉한다.
   툴셋을 올리면 `VC\Redist\MSVC\<ver>\x64\Microsoft.VC143.CRT\` 에서 3개를 다시 복사한다.
 
+**설치 옵션 페이지**: Directory 다음에 nsDialogs 커스텀 페이지가 하나 있다 — 서버 저장소 URL(선택)과
+바탕화면 바로가기 여부. URL 을 넣으면 `HKCU\Software\ClaudeCodeStudio` 의 `RepoUrl` 값에 기록된다.
+비워 두면 기록하지 않는다(건너뛰기). 바로가기 체크박스는 기본 켬 — 시작 메뉴 바로가기는 항상 만든다.
+
+## 첫 실행 (초기 설정)
+
+`~/.claude` 가 git 워킹트리가 아니면 sync 모듈이 `configured:false` 를 올려 **초기 설정 화면**만 노출한다.
+저장소 URL 은 **어떤 기본값도 채우지 않는다** — 특정 저장소가 박혀 있으면 남의 저장소로 부트스트랩될 수 있다.
+화면은 두 갈래다.
+
+- **서버 주소를 직접 입력** — `bootstrap` 명령. 입력칸은 인스톨러가 남긴 `RepoUrl`(있으면)로만 채워진다.
+- **GitHub 계정에 새로 만들기** — `createRepo` 명령. `gh` CLI 에 위임한다
+  (`gh api user --jq .login` 으로 계정 확인 → `gh repo view` 로 존재 확인 → 없으면 `gh repo create`).
+  gh 미설치/미로그인이면 이 갈래는 잠기고 상태 문구로 이유를 보여준다.
+
+`CmdBootstrap` 은 fetch 후 `origin/main` 유무로 방향을 정한다 — 있으면 서버 것으로 정렬(기존 설정은
+`.sync-backup-<시각>/` 에 백업), 없으면(빈 저장소) 화이트리스트 `.gitignore` 를 만들고 이 PC 설정을 첫 커밋으로 push.
+중간 실패 시 이 실행에서 만든 `.git` 을 지운다 — 롤백하지 않으면 워킹트리로 남아 초기 설정 화면이 다시 뜨지 않는다.
+
 ## 모듈 아키텍처
 
 - **로딩**: `Core/src/modules.cpp` 의 `kModuleDlls[]` 에 dll 명을 하드코딩 → 시작 시 `LoadLibrary` + `GetProcAddress` 로 `Module_*` 바인딩 (D11 "암시적" = 목록 하드코딩).

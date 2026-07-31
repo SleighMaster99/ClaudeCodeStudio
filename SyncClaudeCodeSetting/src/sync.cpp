@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 
 #include "module_api.h"
 
@@ -20,11 +21,12 @@ static PostToUiFn   g_post = nullptr;
 static std::wstring g_repoDir;   // 기본 %USERPROFILE%\.claude (테스트 시 CCSTUDIO_CLAUDE_DIR)
 
 // 셸 설정 탭 값 (configure 명령으로 갱신, 저장소는 웹 localStorage — 여기는 프로세스 생존 동안만).
-static const char*  kDefaultRepoUrl   = "https://github.com/SleighMaster99/claude-code-settings.git";
+// 저장소 URL 에는 기본값을 두지 않는다 — 빈 값이면 초기 설정을 거부한다.
+// 특정 저장소를 미리 채워두면 다른 사용자가 무심코 남의 저장소로 부트스트랩할 수 있다.
 static const char*  kDefaultCommitTpl = "update from {host} {time}";
-static int          g_logCount    = 8;               // 이력 표시 개수 (1~50)
-static std::string  g_commitTpl;                     // 커밋 메시지 형식 (빈 값 = 기본)
-static std::string  g_defaultRepo = kDefaultRepoUrl; // 초기 설정 기본 저장소 URL
+static int          g_logCount    = 8;   // 이력 표시 개수 (1~50)
+static std::string  g_commitTpl;         // 커밋 메시지 형식 (빈 값 = 기본)
+static std::string  g_defaultRepo;       // 초기 설정 기본 저장소 URL (빈 값 = 없음)
 
 // ---------- string helpers ----------
 static std::wstring Widen(const std::string& s) {
@@ -92,6 +94,25 @@ static DWORD RunCapture(const std::wstring& cmdline, const std::wstring& cwd, st
 }
 static DWORD Git(const std::wstring& args, std::string& out) {
     return RunCapture(L"git " + args, g_repoDir, out);
+}
+// GitHub CLI. 미설치면 CreateProcess 자체가 실패해 (DWORD)-1 이 돌아온다 — 로그인 실패(exit 1)와 구분된다.
+static DWORD Gh(const std::wstring& args, std::string& out) {
+    return RunCapture(L"gh " + args, g_repoDir, out);
+}
+
+// 인스톨러가 남긴 값 읽기 (HKCU\Software\ClaudeCodeStudio). 없으면 빈 문자열.
+static std::string RegRead(const wchar_t* name) {
+    HKEY k;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\ClaudeCodeStudio", 0, KEY_READ, &k) != ERROR_SUCCESS)
+        return "";
+    wchar_t buf[1024];
+    DWORD cb = sizeof(buf), type = 0;
+    LSTATUS st = RegQueryValueExW(k, name, nullptr, &type, (LPBYTE)buf, &cb);
+    RegCloseKey(k);
+    if (st != ERROR_SUCCESS || type != REG_SZ) return "";
+    std::wstring w(buf, cb / sizeof(wchar_t));
+    while (!w.empty() && w.back() == L'\0') w.pop_back();
+    return Trim(Narrow(w));
 }
 
 // ---------- JSON ----------
@@ -332,17 +353,83 @@ static void BackupExisting() {
     }
 }
 
-// 초기 설정: 미설정 ~/.claude 를 git 으로 부트스트랩해 origin/main 과 정렬.
+// 초기 설정이 중간에 실패했을 때, 이 실행에서 만든 .git 을 지워 원래 상태로 되돌린다.
+// 롤백하지 않으면 ~/.claude 가 저장소로 남아 다음 실행에서 초기 설정 화면이 뜨지 않는다.
+static void RollbackInit() {
+    std::error_code ec;
+    fs::remove_all(fs::path(g_repoDir) / L".git", ec);
+}
+
+// 화이트리스트 .gitignore — 없을 때만 만든다.
+// 전부 무시한 뒤 PC 간에 옮겨 다녀야 할 설정만 다시 허용한다.
+// 자격증명·세션 데이터·캐시가 서버로 올라가지 않게 하는 안전장치다.
+static void WriteDefaultGitignore() {
+    fs::path p = fs::path(g_repoDir) / L".gitignore";
+    std::error_code ec;
+    if (fs::exists(p, ec)) return;
+    std::ofstream f(p, std::ios::trunc | std::ios::binary);
+    if (!f) return;
+    f << "# ~/.claude sync - whitelist model.\n"
+         "# Ignore everything at the repo root, then re-include only the global config\n"
+         "# meant to travel between machines. Anything not listed here - credentials,\n"
+         "# session data, caches, machine-local settings - stays on this machine only.\n"
+         "/*\n"
+         "\n"
+         "!/.gitignore\n"
+         "!/CLAUDE.md\n"
+         "!/settings.json\n"
+         "!/commands/\n"
+         "!/hooks/\n"
+         "!/output-styles/\n"
+         "\n"
+         "# Backups and compiled caches are never tracked, even inside the folders above.\n"
+         "*.bak\n"
+         "*.orig\n"
+         "__pycache__/\n"
+         "*.pyc\n";
+}
+
+// 초기 설정: 미설정 ~/.claude 를 서버 저장소와 연결한다.
+// 서버에 main 이 있으면 그것으로 정렬하고, 빈 저장소면 이 PC 설정을 첫 커밋으로 올린다.
 static void CmdBootstrap(const std::string& url) {
     if (IsConfigured()) { Result(false, "이미 설정되어 있습니다", ""); CmdStatus(); CmdLog(); return; }
 
-    std::string repoUrl = url.empty() ? g_defaultRepo : url;
+    std::string repoUrl = Trim(url.empty() ? g_defaultRepo : url);
+    if (repoUrl.empty()) { Result(false, "저장소 URL 을 입력하세요", ""); return; }
+
+    std::error_code ec;
+    bool hadGit = fs::exists(fs::path(g_repoDir) / L".git", ec);   // 우리가 만든 .git 만 롤백 대상
     std::string out, tmp;
 
     if (Git(L"init -b main", tmp) != 0) { Result(false, "저장소 초기화(git init) 실패", Trim(tmp)); return; }
     Git(L"remote remove origin", tmp);   // 잔여 origin 제거(있으면)
-    if (Git(L"remote add origin " + Widen(QuoteArg(repoUrl)), tmp) != 0) { Result(false, "원격(origin) 추가 실패", Trim(tmp)); return; }
-    if (Git(L"fetch origin", out) != 0) { Result(false, "원격에서 가져오기 실패 (저장소 URL/로그인 확인)", Trim(out)); return; }
+    if (Git(L"remote add origin " + Widen(QuoteArg(repoUrl)), tmp) != 0) {
+        if (!hadGit) RollbackInit();
+        Result(false, "원격(origin) 추가 실패", Trim(tmp));
+        return;
+    }
+    if (Git(L"fetch origin", out) != 0) {
+        if (!hadGit) RollbackInit();
+        Result(false, "원격에서 가져오기 실패 (저장소 URL/로그인 확인)", Trim(out));
+        return;
+    }
+
+    // 서버에 main 이 없다 = 방금 만든 빈 저장소. 이 PC 설정을 첫 커밋으로 올린다.
+    if (Git(L"rev-parse --verify origin/main", tmp) != 0) {
+        WriteDefaultGitignore();
+        Git(L"add -A", tmp);
+        Git(L"commit -m " + Widen(QuoteArg("initial sync from " + HostName())), tmp);
+        if (Git(L"push -u origin main", out) != 0) {
+            Result(false, "첫 반영 실패 (권한 확인 후 '이 PC → 서버 반영' 으로 재시도)", Trim(out));
+            CmdStatus();
+            CmdLog();
+            return;
+        }
+        Result(true, "초기 설정 완료", "이 PC 의 설정을 서버에 올렸습니다");
+        CmdStatus();
+        CmdLog();
+        return;
+    }
 
     BackupExisting();
 
@@ -354,14 +441,52 @@ static void CmdBootstrap(const std::string& url) {
     CmdLog();
 }
 
+// 초기 설정 화면이 쓸 환경 정보: gh 설치/로그인 여부, 로그인 계정, 인스톨러가 남긴 저장소 URL.
+static void CmdGhInfo() {
+    std::string out;
+    DWORD code = Gh(L"api user --jq .login", out);
+    bool installed = (code != (DWORD)-1);
+    std::string account = Trim(out);
+    bool loggedIn = installed && code == 0 && !account.empty();
+
+    // repoDir 을 오버라이드한 검증 실행에서는 이 PC 의 설치 흔적을 끌어오지 않는다.
+    std::string suggested = EnvVar(L"CCSTUDIO_CLAUDE_DIR").empty() ? RegRead(L"RepoUrl") : "";
+
+    std::string j = "{\"type\":\"gh\",\"installed\":";
+    j += installed ? "true" : "false";
+    j += ",\"loggedIn\":";
+    j += loggedIn ? "true" : "false";
+    j += ",\"account\":\"" + JsonEsc(loggedIn ? account : "") + "\"";
+    j += ",\"suggestedRepo\":\"" + JsonEsc(suggested) + "\"}";
+    PostToWeb(j);
+}
+
+// GitHub 저장소를 준비하고(없으면 생성) 그 URL 로 초기 설정까지 이어서 수행한다.
+// 이미 있는 저장소면 만들지 않고 그대로 연결한다 — 두 번째 PC 에서 같은 화면을 쓰는 경우.
+static void CmdCreateRepo(const std::string& req) {
+    std::string owner = Trim(JsonGet(req, "owner"));
+    std::string name  = Trim(JsonGet(req, "repo"));
+    bool isPrivate = JsonGet(req, "private") != "false";
+    if (owner.empty() || name.empty()) { Result(false, "계정명과 저장소 이름이 필요합니다", ""); return; }
+
+    std::string slug = owner + "/" + name, out;
+    if (Gh(L"repo view " + Widen(QuoteArg(slug)), out) != 0) {
+        std::wstring vis = isPrivate ? L" --private" : L" --public";
+        if (Gh(L"repo create " + Widen(QuoteArg(slug)) + vis, out) != 0) {
+            Result(false, "저장소 생성 실패 (gh 로그인/권한 확인)", Trim(out));
+            return;
+        }
+    }
+    CmdBootstrap("https://github.com/" + slug + ".git");
+}
+
 // 셸 설정 탭 값 수신. 응답 없음 — 이후 명령부터 반영된다.
 static void CmdConfigure(const std::string& req) {
     std::string n = JsonGet(req, "logCount");
     int v = std::atoi(n.c_str());
     g_logCount = (v >= 1 && v <= 50) ? v : 8;
     g_commitTpl = JsonGet(req, "commitMsg");
-    std::string r = Trim(JsonGet(req, "defaultRepo"));
-    g_defaultRepo = r.empty() ? kDefaultRepoUrl : r;
+    g_defaultRepo = Trim(JsonGet(req, "defaultRepo"));
 }
 
 // ---------- module exports ----------
@@ -386,5 +511,7 @@ MODULE_API void Module_Handle(const char* reqJson) {
     else if (cmd == "revert")    CmdRevert(arg);
     else if (cmd == "setRemote") CmdSetRemote(arg);
     else if (cmd == "bootstrap") CmdBootstrap(arg);
+    else if (cmd == "ghInfo")    CmdGhInfo();
+    else if (cmd == "createRepo") CmdCreateRepo(req);
     else                         Result(false, "알 수 없는 명령", cmd);
 }

@@ -205,13 +205,22 @@ button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .setup-mark { font-size:2.125rem; color:var(--accent); margin-bottom:6px; }
 .setup-title { font-family:var(--font-mono); font-size:1.25rem; font-weight:600; margin:0 0 8px; }
 .setup-desc { font-size:0.8125rem; color:var(--ink2); margin:0 0 20px; }
-.setup-label { display:block; text-align:left; font-size:0.65625rem; color:var(--ink3);
-  margin-bottom:5px; text-transform:uppercase; letter-spacing:.5px; }
+/* 초기 설정 방식 선택 — 라디오 한 줄 + 그 아래 펼쳐지는 입력 영역 */
+.setup-mode { display:flex; align-items:center; gap:8px; text-align:left; cursor:pointer;
+  padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:var(--s2); }
+.setup-mode:has(input:checked) { border-color:var(--accent); background:var(--win); }
+.setup-mode:has(input:disabled) { opacity:.55; cursor:default; }
+.setup-mode + .setup-mode { margin-top:8px; }
+.setup-mode-name { font-size:0.8125rem; color:var(--ink); }
+.setup-mode-state { margin-left:auto; font-family:var(--font-mono); font-size:0.65625rem; color:var(--ink3); }
+.setup-pane { padding:10px 0 2px; text-align:left; }
+.setup-pane[hidden] { display:none; }
+.setup-check { display:flex; align-items:center; gap:7px; font-size:0.75rem; color:var(--ink2); cursor:pointer; }
 .setup-input { width:100%; padding:9px 11px; font-family:var(--font-mono); font-size:0.75rem;
-  border:1px solid var(--line2); border-radius:8px; background:var(--win); color:var(--ink); margin-bottom:14px; }
+  border:1px solid var(--line2); border-radius:8px; background:var(--win); color:var(--ink); margin-bottom:10px; }
 .setup-input:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
-.setup-go { width:100%; padding:11px; font-family:var(--font-mono); font-size:0.875rem; font-weight:600;
-  border:0; border-radius:8px; background:var(--accent); color:var(--on-accent); cursor:pointer; }
+.setup-go { width:100%; margin-top:14px; padding:11px; font-family:var(--font-mono); font-size:0.875rem;
+  font-weight:600; border:0; border-radius:8px; background:var(--accent); color:var(--on-accent); cursor:pointer; }
 .setup-go:hover:not([disabled]) { background:var(--accent2); }
 .setup-go[disabled] { opacity:.6; cursor:default; }
 .setup-note { font-size:0.6875rem; color:var(--ink3); margin:12px 0 0; }

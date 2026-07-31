@@ -96,6 +96,42 @@ public class Scenarios
     }
 
     [TestMethod]
+    public void 초기설정_저장소URL_빈칸으로_시작()
+    {
+        using var app = CcsApp.Launch(unconfigured: true);
+        app.SwitchToModule("sync");
+
+        var input = app.WaitForSelector("#repoUrl", 10000);
+        CcsApp.WaitUntil(() => { try { return input.Displayed; } catch { return false; } }, v => v, 8000);
+
+        Assert.AreEqual("", input.GetAttribute("value") ?? "", "저장소 URL 은 미리 채워지지 않는다");
+        Assert.AreNotEqual("", input.GetAttribute("placeholder") ?? "", "입력 형식은 placeholder 로 안내한다");
+    }
+
+    [TestMethod]
+    public void 초기설정_GitHub_새로만들기_모드_전환()
+    {
+        using var app = CcsApp.Launch(unconfigured: true);
+        app.SwitchToModule("sync");
+        app.WaitForSelector("#repoUrl", 10000);
+
+        // gh 조회는 왕복이 있으므로 상태 문구가 '확인 중…' 에서 바뀔 때까지 기다린다
+        string state = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghState")).Text; } catch { return ""; } },
+            s => s.Length > 0 && !s.Contains("확인 중"), 20000);
+
+        var radio = app.Driver.FindElement(By.Id("modeNew"));
+        if (!radio.Enabled) { Assert.Inconclusive($"이 PC 에서는 gh 를 쓸 수 없음: {state}"); return; }
+
+        radio.Click();
+        bool switched = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("newRepoName")).Displayed
+                              && !app.Driver.FindElement(By.Id("repoUrl")).Displayed; } catch { return false; } },
+            v => v, 3000);
+        Assert.IsTrue(switched, "'새로 만들기' 선택 시 저장소 이름이 열리고 URL 입력은 닫힌다");
+    }
+
+    [TestMethod]
     public void 설정탭_창크기_해상도_변경()
     {
         using var app = CcsApp.Launch();

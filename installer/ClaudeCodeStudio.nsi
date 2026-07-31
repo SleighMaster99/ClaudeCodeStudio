@@ -41,6 +41,9 @@ VIAddVersionKey "LegalCopyright"  "Copyright (C) ${COMPANY}"
 VIAddVersionKey "FileDescription" "${APPDISPLAY} Setup"
 
 !include "MUI2.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
+!include "WinMessages.nsh"
 !define MUI_ABORTWARNING
 ; Setup / 언인스톨러 아이콘 — 저장소 로고 자산을 컴파일 타임에 임베드 (경로는 이 스크립트 기준)
 !define MUI_ICON   "${__FILEDIR__}\..\assets\logo\logo.ico"
@@ -48,8 +51,61 @@ VIAddVersionKey "FileDescription" "${APPDISPLAY} Setup"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APPKEY}.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "지금 실행"
 
+; ----- 설치 옵션 페이지 (nsDialogs) -----
+; 서버 저장소 주소를 미리 받아 두면 앱 첫 실행 때 초기 설정 화면에 채워진다.
+; 비워 두고 넘어가도 된다 — 그때는 앱에서 직접 입력하거나 GitHub 계정에 새로 만든다.
+Var Dialog
+Var RepoUrlText
+Var DesktopCheck
+Var RepoUrl        ; 입력값 (빈 값 = 건너뜀)
+Var MakeDesktop    ; 바탕화면 바로가기 생성 여부
+
+Function OptionsPageCreate
+  !insertmacro MUI_HEADER_TEXT "설치 옵션" "서버 저장소와 바로가기를 설정합니다."
+  nsDialogs::Create 1018
+  Pop $Dialog
+  ${If} $Dialog == error
+    Abort
+  ${EndIf}
+
+  ${NSD_CreateLabel} 0 0 100% 26u "Claude Code 설정을 보관할 서버 저장소 주소입니다.$\r$\n지금 비워 두면 앱을 처음 실행할 때 입력하거나 GitHub 계정에 새로 만들 수 있습니다."
+  Pop $0
+
+  ${NSD_CreateLabel} 0 32u 100% 11u "저장소 URL (선택)"
+  Pop $0
+
+  ${NSD_CreateText} 0 44u 100% 13u "$RepoUrl"
+  Pop $RepoUrlText
+  ${NSD_SetTextLimit} $RepoUrlText 500
+
+  ${NSD_CreateLabel} 0 60u 100% 11u "예: https://github.com/OWNER/REPO.git"
+  Pop $0
+
+  ${NSD_CreateCheckbox} 0 84u 100% 12u "바탕화면에 바로가기 만들기"
+  Pop $DesktopCheck
+  ${If} $MakeDesktop == ${BST_UNCHECKED}
+    ${NSD_Uncheck} $DesktopCheck
+  ${Else}
+    ${NSD_Check} $DesktopCheck
+  ${EndIf}
+
+  nsDialogs::Show
+FunctionEnd
+
+Function OptionsPageLeave
+  ${NSD_GetText} $RepoUrlText $RepoUrl
+  ${NSD_GetState} $DesktopCheck $MakeDesktop
+FunctionEnd
+
+; 재설치라면 이전에 넣은 주소를 다시 보여준다. 바로가기는 기본 체크.
+Function .onInit
+  ReadRegStr $RepoUrl HKCU "Software\${APPKEY}" "RepoUrl"
+  StrCpy $MakeDesktop ${BST_CHECKED}
+FunctionEnd
+
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
+Page custom OptionsPageCreate OptionsPageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -84,10 +140,16 @@ Section "Install"
   ; ----- 바로가기 -----
   CreateDirectory "$SMPROGRAMS\${APPDISPLAY}"
   CreateShortcut "$SMPROGRAMS\${APPDISPLAY}\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
-  CreateShortcut "$DESKTOP\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
+  ${If} $MakeDesktop == ${BST_CHECKED}
+    CreateShortcut "$DESKTOP\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
+  ${EndIf}
 
   ; ----- 등록 + uninstaller -----
   WriteRegStr HKCU "Software\${APPKEY}" "InstallDir" "$INSTDIR"
+  ; 앱의 초기 설정 화면이 이 값을 저장소 URL 로 미리 채운다 (비었으면 기록하지 않는다).
+  ${If} $RepoUrl != ""
+    WriteRegStr HKCU "Software\${APPKEY}" "RepoUrl" "$RepoUrl"
+  ${EndIf}
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   !define UNINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPKEY}"

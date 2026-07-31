@@ -27,11 +27,32 @@
       <div class="setup-mark">◒</div>
       <h1 class="setup-title">초기 설정</h1>
       <p class="setup-desc">이 PC 의 <code>~/.claude</code> 설정을 서버와 동기화하도록 준비합니다.</p>
-      <label class="setup-label">저장소 URL</label>
-      <input id="repoUrl" class="setup-input" type="text"
-             value="https://github.com/SleighMaster99/claude-code-settings.git">
-      <button id="setupBtn" class="setup-go">초기 설정 시작</button>
-      <p class="setup-note">기존 설정은 <code>.sync-backup</code> 에 백업된 뒤 서버 설정으로 정렬됩니다.</p>
+
+      <label class="setup-mode" for="modeUrl">
+        <input type="radio" name="setupMode" id="modeUrl" value="url" checked>
+        <span class="setup-mode-name">서버 주소를 직접 입력</span>
+      </label>
+      <div id="paneUrl" class="setup-pane">
+        <input id="repoUrl" class="setup-input" type="text" spellcheck="false" autocomplete="off"
+               placeholder="https://github.com/OWNER/REPO.git">
+      </div>
+
+      <label class="setup-mode" for="modeNew">
+        <input type="radio" name="setupMode" id="modeNew" value="new">
+        <span class="setup-mode-name">GitHub 계정에 새로 만들기</span>
+        <span id="ghState" class="setup-mode-state">확인 중…</span>
+      </label>
+      <div id="paneNew" class="setup-pane" hidden>
+        <input id="newRepoName" class="setup-input" type="text" spellcheck="false" autocomplete="off"
+               value="claude-code-settings" placeholder="claude-code-settings">
+        <label class="setup-check" for="newRepoPrivate">
+          <input type="checkbox" id="newRepoPrivate" checked>
+          <span>비공개(private) 저장소로 만들기</span>
+        </label>
+      </div>
+
+      <button id="setupBtn" class="setup-go">시작</button>
+      <p id="setupNote" class="setup-note"></p>
     </div>
   </section>
 
