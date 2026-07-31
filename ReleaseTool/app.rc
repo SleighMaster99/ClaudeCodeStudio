@@ -1,0 +1,5 @@
+// ReleaseTool 앱 아이콘 — 개발용 exe 지만 창/작업표시줄에서 구분되도록 같은 로고를 쓴다.
+// ID 는 shared/resource_ids.h 계약을 따른다 (main.cpp 가 LoadImage 로 참조).
+#include "../shared/resource_ids.h"
+
+IDI_APP_ICON ICON "..\\assets\\logo\\logo.ico"

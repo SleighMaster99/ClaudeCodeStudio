@@ -20,6 +20,7 @@
 #include <cstdio>
 
 #include "releasetool.h"
+#include "resource_ids.h"
 
 using namespace Microsoft::WRL;
 
@@ -270,6 +271,10 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int nCmdShow) {
     wc.lpszClassName = L"ReleaseToolWnd";
     wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    // 앱 아이콘은 exe 리소스(ReleaseTool/app.rc)의 IDI_APP_ICON — 없으면 시스템 기본.
+    wc.hIcon         = (HICON)LoadImageW(hInst, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
+    wc.hIconSm       = (HICON)LoadImageW(hInst, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
+                                         GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
     RegisterClassExW(&wc);
 
     g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"ReleaseTool",
