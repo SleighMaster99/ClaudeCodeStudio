@@ -216,6 +216,18 @@ button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .setup-pane { padding:10px 0 2px; text-align:left; }
 .setup-pane[hidden] { display:none; }
 .setup-check { display:flex; align-items:center; gap:7px; font-size:0.75rem; color:var(--ink2); cursor:pointer; }
+/* gh 로그인 — 터미널 대신 앱에서 시작하고, 일회용 코드를 여기 띄운다 */
+.setup-login { margin-top:10px; }
+.setup-login[hidden] { display:none; }
+.setup-login-go { width:100%; padding:9px; font-family:var(--font-mono); font-size:0.78rem;
+  border:1px solid var(--line2); border-radius:8px; background:var(--win); color:var(--ink2); cursor:pointer; }
+.setup-login-go:hover:not([disabled]) { border-color:var(--accent); color:var(--accent); }
+.setup-login-go[disabled] { opacity:.6; cursor:default; }
+.setup-code { margin-top:10px; padding:12px; border:1px solid var(--accent); border-radius:8px;
+  background:var(--s2); display:flex; flex-direction:column; align-items:center; gap:5px; }
+.setup-code[hidden] { display:none; }
+.setup-code-cap { font-size:0.6875rem; color:var(--ink3); }
+.setup-code-val { font-family:var(--font-mono); font-size:1.375rem; letter-spacing:.12em; color:var(--accent); }
 .setup-input { width:100%; padding:9px 11px; font-family:var(--font-mono); font-size:0.75rem;
   border:1px solid var(--line2); border-radius:8px; background:var(--win); color:var(--ink); margin-bottom:10px; }
 .setup-input:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }

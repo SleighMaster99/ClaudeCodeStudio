@@ -59,9 +59,10 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
 파일만 보면 VERSION 커밋을 빠뜨린 clone 이 이미 배포한 버전을 다시 만든다.
 오프라인이거나 `--sort` 를 모르는 구버전 git 이면 조용히 파일 값만 쓴다. `0.0.0` = 아직 발행 없음.
 
-**`VERSION` 은 발행 후 사람이 커밋한다.** `Build.bat` 은 파일에 쓰기만 하고,
-`ReleaseTool` 은 `gh release create` 만 한다 — 어느 쪽도 커밋하지 않는다(어느 브랜치에 올릴지가 사람 몫이라).
-배포가 끝나면 ReleaseTool 로그가 미커밋 상태와 커밋 명령을 짚어 준다.
+**`VERSION` 커밋은 ReleaseTool 이 한다.** 배포(`gh release create`)가 성공하면
+`chore/version-<ver>` 브랜치를 만들어 `installer\VERSION` 만 커밋·push 하고 원래 브랜치로 돌아온다.
+전용 브랜치를 쓰는 이유는 이 저장소가 main 직접 커밋을 금지하기 때문 — 머지는 사람이 PR 로 한다.
+`Build.bat` 을 콘솔에서 직접 부른 경우에는 파일만 갱신되므로 직접 커밋해야 한다.
 
 **주의할 점 세 가지**:
 - `Build.bat` 은 솔루션 전체가 아니라 **`-t:ClaudeCodeStudio`** 로 빌드한다. ProjectReference 로 Core+모듈 2개는
@@ -85,7 +86,13 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
 - **서버 주소를 직접 입력** — `bootstrap` 명령. 입력칸은 인스톨러가 남긴 `RepoUrl`(있으면)로만 채워진다.
 - **GitHub 계정에 새로 만들기** — `createRepo` 명령. `gh` CLI 에 위임한다
   (`gh api user --jq .login` 으로 계정 확인 → `gh repo view` 로 존재 확인 → 없으면 `gh repo create`).
-  gh 미설치/미로그인이면 이 갈래는 잠기고 상태 문구로 이유를 보여준다.
+  gh 미설치면 이 갈래는 잠긴다.
+
+**gh 로그인은 앱 안에서 한다** — 터미널을 열 일이 없다. 설치돼 있는데 로그인 전이면 **[GitHub 로그인]** 버튼이 뜨고,
+`ghLogin` 이 `gh auth login --hostname github.com --git-protocol https --skip-ssh-key` 를 파이프로 띄운다.
+플래그로 프롬프트를 미리 채워 대화형 입력이 없고, 일회용 코드가 나오는 즉시 브라우저를 열고 코드를 화면에 띄운다.
+gh 프로세스는 남겨 둔다(승인되면 스스로 끝남) — 종료를 기다리면 창이 멈추고, 워커 스레드에서는 WebView2 로 회신할 수 없다.
+완료 여부는 웹이 3초마다 `ghInfo` 를 물어 감지한다.
 
 `CmdBootstrap` 은 fetch 후 `origin/main` 유무로 방향을 정한다 — 있으면 서버 것으로 정렬(기존 설정은
 `.sync-backup-<시각>/` 에 백업), 없으면(빈 저장소) 화이트리스트 `.gitignore` 를 만들고 이 PC 설정을 첫 커밋으로 push.

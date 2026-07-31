@@ -121,6 +121,14 @@ function applySetupMode() {
     : "서버에 설정이 있으면 가져오고, 빈 저장소면 이 PC 설정을 올립니다. 덮어쓰기 전 기존 설정은 .sync-backup 에 백업됩니다.";
 }
 
+// 로그인 승인은 브라우저에서 일어나므로, 끝났는지는 앱이 주기적으로 물어봐서 안다.
+var ghPollTimer = null;
+function stopGhPoll() { clearInterval(ghPollTimer); ghPollTimer = null; }
+function startGhPoll() {
+  stopGhPoll();
+  ghPollTimer = setInterval(function () { send("ghInfo"); }, 3000);
+}
+
 // gh 설치/로그인 여부에 따라 '새로 만들기' 모드를 열거나 잠근다.
 function applyGhInfo(m) {
   ghAccount = m.account || "";
@@ -128,9 +136,19 @@ function applyGhInfo(m) {
   const ready = !!(m.installed && m.loggedIn && ghAccount);
   radio.disabled = !ready;
   $("ghState").textContent = ready ? "✓ " + ghAccount
-    : (m.installed ? "gh auth login 필요 → ⟳" : "gh CLI 미설치");
+    : (m.installed ? "로그인 필요" : "gh CLI 미설치");
   if (!ready && radio.checked) { $("modeUrl").checked = true; }
   applySetupMode();
+
+  // gh 는 있는데 로그인 전이면 앱에서 바로 로그인할 수 있게 연다
+  $("ghLoginBox").hidden = !(m.installed && !ready);
+  if (ready) {
+    stopGhPoll();
+    $("ghCodeBox").hidden = true;
+    const b = $("ghLoginBtn");
+    b.disabled = false;
+    b.textContent = "GitHub 로그인";
+  }
 
   // 인스톨러가 남긴 주소는 아직 아무것도 채워지지 않았을 때만 제안한다
   const ru = $("repoUrl");
@@ -303,6 +321,12 @@ function handle(msg) {
     case "gh":
       applyGhInfo(msg);
       break;
+    case "ghLogin":
+      $("ghCode").textContent = msg.code || "—";
+      $("ghCodeBox").hidden = false;
+      $("ghLoginBtn").textContent = "브라우저에서 승인하세요";
+      startGhPoll();
+      break;
     case "log":
       hideBusy();          // 모든 원격 작업이 마지막에 log 를 보낸다
       lastLog = msg;
@@ -311,6 +335,11 @@ function handle(msg) {
     case "result":
       hideBusy();          // 실패로 조기 종료(log 미수신)하는 경로까지 확실히 해제
       showToast(msg.message + (msg.detail ? " — " + msg.detail : ""), msg.ok);
+      // 로그인 시작이 실패했으면 버튼을 되살린다 (성공은 ghLogin 이 받는다)
+      if (!msg.ok && $("ghLoginBtn").disabled) {
+        $("ghLoginBtn").disabled = false;
+        $("ghLoginBtn").textContent = "GitHub 로그인";
+      }
       // 부트스트랩 등 결과 직후, 초기 설정 화면이면 상태를 다시 조회(성공 시 전환/실패 시 버튼 복구)
       if (!$("setup").hidden) send("status");
       break;
@@ -351,6 +380,12 @@ $("remoteSave").addEventListener("click", () => {
 
 $("modeUrl").addEventListener("change", applySetupMode);
 $("modeNew").addEventListener("change", applySetupMode);
+
+$("ghLoginBtn").addEventListener("click", function () {
+  this.disabled = true;
+  this.textContent = "로그인 준비 중…";
+  send("ghLogin");
+});
 
 $("setupBtn").addEventListener("click", function () {
   // '새로 만들기' 는 owner/repo/private 을 함께 보내야 해서 send() 대신 직접 구성한다.

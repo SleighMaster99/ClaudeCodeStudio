@@ -5,9 +5,11 @@
 // git 로직은 동기화 프로토타입에서 이식했고, WebView2/창 코드는 Core 가 전담한다.
 // 미설정(git repo 아님) 감지 시 status.configured=false 로 알려 초기 설정(부트스트랩)을 유도한다.
 #include <windows.h>
+#include <shellapi.h>
 
 #include <string>
 #include <vector>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -461,6 +463,67 @@ static void CmdGhInfo() {
     PostToWeb(j);
 }
 
+// gh 출력에서 일회용 코드를 뽑는다. 형식: "! First copy your one-time code: 292E-8B02"
+static std::string ExtractDeviceCode(const std::string& s) {
+    const std::string key = "one-time code:";
+    size_t p = s.find(key);
+    if (p == std::string::npos) return "";
+    p += key.size();
+    while (p < s.size() && (s[p] == ' ' || s[p] == '\t')) ++p;
+    std::string code;
+    while (p < s.size() && (std::isalnum((unsigned char)s[p]) || s[p] == '-')) code += s[p++];
+    return code;
+}
+
+// gh 로그인을 시작하고, 일회용 코드가 나오는 즉시 브라우저를 열어 준 뒤 돌아온다.
+// 호스트/프로토콜/SSH 프롬프트는 플래그로 미리 채워 대화형 입력이 없다 — 사용자는
+// 터미널을 볼 일 없이 앱에 뜬 코드를 브라우저에 넣기만 하면 된다.
+// gh 프로세스는 남겨 둔다: 승인되면 스스로 끝난다. 종료를 기다리면 창이 멈추고,
+// 워커 스레드에서는 UI 로 회신할 수 없다(WebView2 는 UI 스레드 전용).
+static void CmdGhLogin() {
+    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
+    HANDLE rd = nullptr, wr = nullptr;
+    if (!CreatePipe(&rd, &wr, &sa, 0)) { Result(false, "로그인을 시작하지 못했습니다", ""); return; }
+    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOW si{}; si.cb = sizeof(si);
+    si.dwFlags     = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    si.hStdOutput  = wr;
+    si.hStdError   = wr;
+
+    std::wstring cmd = L"gh auth login --hostname github.com --git-protocol https --skip-ssh-key";
+    std::vector<wchar_t> cl(cmd.begin(), cmd.end());
+    cl.push_back(L'\0');
+
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessW(nullptr, cl.data(), nullptr, nullptr, TRUE,
+                             CREATE_NO_WINDOW, nullptr,
+                             g_repoDir.empty() ? nullptr : g_repoDir.c_str(), &si, &pi);
+    CloseHandle(wr);
+    if (!ok) {
+        CloseHandle(rd);
+        Result(false, "gh 를 실행하지 못했습니다", "설치와 PATH 를 확인하세요");
+        return;
+    }
+
+    std::string out, code;
+    char buf[1024]; DWORD read = 0;
+    while (code.empty() && ReadFile(rd, buf, sizeof(buf), &read, nullptr) && read > 0) {
+        out.append(buf, read);
+        code = ExtractDeviceCode(out);
+    }
+    CloseHandle(rd);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);   // 프로세스는 계속 돌게 두고 핸들만 놓는다
+
+    if (code.empty()) { Result(false, "로그인 코드를 받지 못했습니다", Trim(out)); return; }
+
+    ShellExecuteW(nullptr, L"open", L"https://github.com/login/device",
+                  nullptr, nullptr, SW_SHOWNORMAL);
+    PostToWeb("{\"type\":\"ghLogin\",\"code\":\"" + JsonEsc(code) + "\"}");
+}
+
 // GitHub 저장소를 준비하고(없으면 생성) 그 URL 로 초기 설정까지 이어서 수행한다.
 // 이미 있는 저장소면 만들지 않고 그대로 연결한다 — 두 번째 PC 에서 같은 화면을 쓰는 경우.
 static void CmdCreateRepo(const std::string& req) {
@@ -512,6 +575,7 @@ MODULE_API void Module_Handle(const char* reqJson) {
     else if (cmd == "setRemote") CmdSetRemote(arg);
     else if (cmd == "bootstrap") CmdBootstrap(arg);
     else if (cmd == "ghInfo")    CmdGhInfo();
+    else if (cmd == "ghLogin")   CmdGhLogin();
     else if (cmd == "createRepo") CmdCreateRepo(req);
     else                         Result(false, "알 수 없는 명령", cmd);
 }

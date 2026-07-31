@@ -240,20 +240,39 @@ DWORD WINAPI BuildThread(LPVOID param) {
     return 0;
 }
 
-// 배포는 끝났는데 Build.bat 이 올려 둔 installer\VERSION 이 아직 커밋되지 않았으면 알린다.
-// 이 파일이 발행 기준선이라, 커밋을 빠뜨리면 다른 PC 의 clone 이 낡은 기준선을 들고
-// 이미 배포한 버전을 다시 만들려 든다. 어느 브랜치에 올릴지는 사람이 정할 몫이라
-// 커밋까지 대신하지는 않고, 할 일과 명령만 남긴다.
-void WarnUncommittedVersion(HWND hwnd, const std::wstring& root) {
+// 배포 직후 installer\VERSION 을 전용 브랜치에 커밋하고 push 한다.
+// 이 파일이 발행 기준선이라 커밋을 빠뜨리면 다른 PC 의 clone 이 낡은 기준선을 들고
+// 이미 배포한 버전을 다시 만들려 든다 - 실제로 0.1.2 에서 그렇게 됐다.
+// main 에 바로 커밋하지 않는 이유: 이 저장소는 main 직접 커밋을 금지한다.
+// 끝나면 원래 브랜치로 돌아와 사용자의 작업 상태를 흐트러뜨리지 않는다.
+void CommitVersionBump(HWND hwnd, const std::wstring& root, const std::string& version) {
     std::string out;
     if (RunQuiet(L"git.exe status --porcelain -- installer/VERSION", root, out) != 0) return;
-    if (Trim(out).empty()) return;
+    if (Trim(out).empty()) {
+        PostLine(hwnd, "  installer\\VERSION 은 이미 커밋되어 있습니다.");
+        return;
+    }
+
+    std::string prev;
+    if (RunQuiet(L"git.exe rev-parse --abbrev-ref HEAD", root, out) == 0) prev = Trim(out);
+
+    std::string branch = "chore/version-" + version;
     PostLine(hwnd, "");
-    PostLine(hwnd, "[TODO] installer\\VERSION 이 아직 커밋되지 않았습니다.");
-    PostLine(hwnd, "       이 파일이 발행 기준선입니다. 커밋하지 않으면 다른 PC 에서");
-    PostLine(hwnd, "       이미 배포한 버전을 다시 만들려는 시도가 통과합니다.");
-    PostLine(hwnd, "       git add installer/VERSION");
-    PostLine(hwnd, "       git commit -m \"chore: 발행 기준선 갱신\"");
+    PostLine(hwnd, "> installer\\VERSION -> " + branch);
+
+    if (RunStreamed(hwnd, L"git.exe checkout -b " + Widen(branch), root) != 0) {
+        PostLine(hwnd, "[ERROR] 브랜치 생성 실패. installer\\VERSION 을 직접 커밋하세요.");
+        return;
+    }
+    std::wstring msg = L"chore: 발행 기준선 " + Widen(version) + L" 갱신";
+    if (RunStreamed(hwnd, L"git.exe commit installer/VERSION -m \"" + msg + L"\"", root) != 0) {
+        PostLine(hwnd, "[ERROR] 커밋에 실패했습니다.");
+    } else if (RunStreamed(hwnd, L"git.exe push -u origin " + Widen(branch), root) != 0) {
+        PostLine(hwnd, "[ERROR] push 에 실패했습니다. 커밋은 " + branch + " 에 남아 있습니다.");
+    } else {
+        PostLine(hwnd, "  " + branch + " 에 커밋하고 push 했습니다. PR 로 main 에 머지하세요.");
+    }
+    if (!prev.empty()) RunStreamed(hwnd, L"git.exe checkout " + Widen(prev), root);
 }
 
 DWORD WINAPI PublishThread(LPVOID param) {
@@ -287,7 +306,7 @@ DWORD WINAPI PublishThread(LPVOID param) {
         else if (code != 0)
             PostLine(job->hwnd, "[ERROR] 배포에 실패했습니다 (종료 코드 " + std::to_string(code) + ").");
         else
-            WarnUncommittedVersion(job->hwnd, root);
+            CommitVersionBump(job->hwnd, root, job->version);
     }
 
     InterlockedExchange(&g_running, 0);
