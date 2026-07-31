@@ -42,6 +42,9 @@ VIAddVersionKey "FileDescription" "${APPDISPLAY} Setup"
 
 !include "MUI2.nsh"
 !define MUI_ABORTWARNING
+; Setup / 언인스톨러 아이콘 — 저장소 로고 자산을 컴파일 타임에 임베드 (경로는 이 스크립트 기준)
+!define MUI_ICON   "${__FILEDIR__}\..\assets\logo\logo.ico"
+!define MUI_UNICON "${__FILEDIR__}\..\assets\logo\logo.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APPKEY}.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "지금 실행"
 

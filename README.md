@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/logo-dark.svg">
+    <img src="assets/logo/logo.svg" width="112" alt="ClaudeCodeStudio 로고">
+  </picture>
+</p>
+
 # ClaudeCodeStudio
 
 Claude Code 설정을 관리하는 Windows용 통합 데스크톱 앱. **C++ + WebView2** 로 만들어졌으며,

@@ -77,6 +77,9 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="app.rc" />
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="..\Core\include\core_api.h" />
   </ItemGroup>
   <ItemGroup>
