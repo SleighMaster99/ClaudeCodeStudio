@@ -16,6 +16,7 @@
 
 #include "core_api.h"
 #include "core_internal.h"
+#include "resource_ids.h"
 
 using namespace Microsoft::WRL;
 namespace fs = std::filesystem;
@@ -269,6 +270,11 @@ extern "C" CORE_API int Core_Run(HINSTANCE hInst, int nCmdShow) {
     wc.lpszClassName = L"ClaudeCodeStudioWnd";
     wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    // 앱 아이콘은 exe 리소스(ClaudeCodeStudio/app.rc)에 있다 — hInst 가 exe 모듈 핸들.
+    // 리소스가 없으면 null 로 남아 시스템 기본 아이콘이 쓰인다.
+    wc.hIcon         = (HICON)LoadImageW(hInst, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
+    wc.hIconSm       = (HICON)LoadImageW(hInst, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
+                                         GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
     RegisterClassExW(&wc);
 
     int winW = 0, winH = 0;
