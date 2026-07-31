@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <!-- ClaudeCodeStudio logo — Square C. 다크 배경용 (커서 = 오프화이트) -->
+  <g fill="none" stroke-width="13" stroke-linecap="round">
+    <path d="M69 24 L41 24 A14 14 0 0 0 27 38" stroke="#E8734A"/>
+    <path d="M27 44 L27 51" stroke="#E3A84D"/>
+    <path d="M27 58 A14 14 0 0 0 41 72 L69 72" stroke="#45B39C"/>
+  </g>
+  <rect x="63" y="42" width="12" height="12" rx="3" fill="#F0EDE7"/>
+</svg>
