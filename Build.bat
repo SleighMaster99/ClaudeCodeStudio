@@ -42,6 +42,41 @@ for /f "tokens=1-3 delims=." %%a in ("!LATEST!") do (
 )
 if not defined LPAT goto :badlatest
 
+rem --- fold in the highest published remote tag ---------------------------------
+rem VERSION is a tracked file that step [5/5] rewrites, so a clone that missed the
+rem "commit the bump" step carries a stale baseline and would rebuild an already
+rem published version. The remote tags are the real record of what shipped, so take
+rem whichever is higher. -v:refname sorts by version, making the first row the
+rem highest tag. Offline, no remote, or an older git without --sort: nothing is
+rem read and the file value stands.
+set "TAGREF="
+for /f "tokens=2" %%r in ('git ls-remote --refs --tags --sort=-v:refname origin "v*.*.*" 2^>nul') do (
+  if not defined TAGREF set "TAGREF=%%r"
+)
+if not defined TAGREF goto :tagbase_done
+
+set "TAGVER=%TAGREF:refs/tags/v=%"
+echo %TAGVER%| findstr /r /x "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*" >nul
+if errorlevel 1 goto :tagbase_done
+
+for /f "tokens=1-3 delims=." %%a in ("%TAGVER%") do (
+  set "TMAJ=%%a"
+  set "TMIN=%%b"
+  set "TPAT=%%c"
+)
+set "TAKE="
+if !TMAJ! GTR !LMAJ! set "TAKE=1"
+if !TMAJ! EQU !LMAJ! if !TMIN! GTR !LMIN! set "TAKE=1"
+if !TMAJ! EQU !LMAJ! if !TMIN! EQU !LMIN! if !TPAT! GTR !LPAT! set "TAKE=1"
+if defined TAKE (
+  set "LATEST=%TAGVER%"
+  set "LMAJ=!TMAJ!"
+  set "LMIN=!TMIN!"
+  set "LPAT=!TPAT!"
+  echo       Baseline from remote tag v%TAGVER% - commit installer\VERSION
+)
+:tagbase_done
+
 rem --- new version -------------------------------------------------------------
 set "VER=%~1"
 if not defined VER (

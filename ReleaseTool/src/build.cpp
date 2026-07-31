@@ -240,6 +240,22 @@ DWORD WINAPI BuildThread(LPVOID param) {
     return 0;
 }
 
+// 배포는 끝났는데 Build.bat 이 올려 둔 installer\VERSION 이 아직 커밋되지 않았으면 알린다.
+// 이 파일이 발행 기준선이라, 커밋을 빠뜨리면 다른 PC 의 clone 이 낡은 기준선을 들고
+// 이미 배포한 버전을 다시 만들려 든다. 어느 브랜치에 올릴지는 사람이 정할 몫이라
+// 커밋까지 대신하지는 않고, 할 일과 명령만 남긴다.
+void WarnUncommittedVersion(HWND hwnd, const std::wstring& root) {
+    std::string out;
+    if (RunQuiet(L"git.exe status --porcelain -- installer/VERSION", root, out) != 0) return;
+    if (Trim(out).empty()) return;
+    PostLine(hwnd, "");
+    PostLine(hwnd, "[TODO] installer\\VERSION 이 아직 커밋되지 않았습니다.");
+    PostLine(hwnd, "       이 파일이 발행 기준선입니다. 커밋하지 않으면 다른 PC 에서");
+    PostLine(hwnd, "       이미 배포한 버전을 다시 만들려는 시도가 통과합니다.");
+    PostLine(hwnd, "       git add installer/VERSION");
+    PostLine(hwnd, "       git commit -m \"chore: 발행 기준선 갱신\"");
+}
+
 DWORD WINAPI PublishThread(LPVOID param) {
     std::unique_ptr<PubJob> job(reinterpret_cast<PubJob*>(param));
     DWORD code = (DWORD)-1;
@@ -270,6 +286,8 @@ DWORD WINAPI PublishThread(LPVOID param) {
             PostLine(job->hwnd, "[ERROR] gh 를 실행하지 못했습니다. 설치와 PATH 를 확인하세요.");
         else if (code != 0)
             PostLine(job->hwnd, "[ERROR] 배포에 실패했습니다 (종료 코드 " + std::to_string(code) + ").");
+        else
+            WarnUncommittedVersion(job->hwnd, root);
     }
 
     InterlockedExchange(&g_running, 0);

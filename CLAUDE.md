@@ -54,8 +54,14 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
 5단계: 버전 검증 → MSBuild → `Shipping\<ver>\` 스테이징 → makensis → `installer\VERSION` 갱신.
 산출물 `Shipping\ClaudeCodeStudio-Setup-<ver>.exe` (`Shipping/` 은 .gitignore).
 
-**버전 규칙**: `MAJOR.MINOR.PATCH`, 선행 0 금지, **`installer\VERSION`(마지막 발행분)보다 높아야** 통과.
-생성 성공 시 `VERSION` 이 자동 갱신되어 다음 기준선이 된다. `0.0.0` = 아직 발행 없음.
+**버전 규칙**: `MAJOR.MINOR.PATCH`, 선행 0 금지, **마지막 발행분보다 높아야** 통과.
+기준선은 `installer\VERSION` 과 **원격 태그(`v<ver>`) 중 높은 쪽**이다 —
+파일만 보면 VERSION 커밋을 빠뜨린 clone 이 이미 배포한 버전을 다시 만든다.
+오프라인이거나 `--sort` 를 모르는 구버전 git 이면 조용히 파일 값만 쓴다. `0.0.0` = 아직 발행 없음.
+
+**`VERSION` 은 발행 후 사람이 커밋한다.** `Build.bat` 은 파일에 쓰기만 하고,
+`ReleaseTool` 은 `gh release create` 만 한다 — 어느 쪽도 커밋하지 않는다(어느 브랜치에 올릴지가 사람 몫이라).
+배포가 끝나면 ReleaseTool 로그가 미커밋 상태와 커밋 명령을 짚어 준다.
 
 **주의할 점 세 가지**:
 - `Build.bat` 은 솔루션 전체가 아니라 **`-t:ClaudeCodeStudio`** 로 빌드한다. ProjectReference 로 Core+모듈 2개는
