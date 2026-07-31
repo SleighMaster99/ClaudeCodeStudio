@@ -128,7 +128,7 @@ function applyGhInfo(m) {
   const ready = !!(m.installed && m.loggedIn && ghAccount);
   radio.disabled = !ready;
   $("ghState").textContent = ready ? "✓ " + ghAccount
-    : (m.installed ? "gh 로그인 필요" : "gh CLI 미설치");
+    : (m.installed ? "gh auth login 필요 → ⟳" : "gh CLI 미설치");
   if (!ready && radio.checked) { $("modeUrl").checked = true; }
   applySetupMode();
 
@@ -338,7 +338,12 @@ window.addEventListener("message", (e) => {
 // wiring
 $("pullBtn").addEventListener("click", () => { if (!$("pullBtn").disabled) send("pull"); });
 $("pushBtn").addEventListener("click", () => { if (!$("pushBtn").disabled) send("push"); });
-$("refreshBtn").addEventListener("click", () => send("refresh"));
+// 초기 설정 화면에서는 gh 상태를 다시 조회한다 — 터미널에서 gh auth login 을 마친 뒤
+// 앱을 다시 켜지 않고 이 버튼만으로 '새로 만들기' 를 열 수 있게 한다.
+$("refreshBtn").addEventListener("click", () => {
+  if (isConfigured === false) { send("ghInfo"); send("status"); return; }
+  send("refresh");
+});
 $("remoteSave").addEventListener("click", () => {
   const u = $("remoteUrl").value.trim();
   if (u) send("setRemote", u);
