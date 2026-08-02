@@ -43,32 +43,34 @@ VIAddVersionKey "FileDescription" "${APPDISPLAY} Setup"
 !include "MUI2.nsh"
 !include "nsDialogs.nsh"
 !include "LogicLib.nsh"
-!include "WinMessages.nsh"
 !define MUI_ABORTWARNING
 ; Setup / 언인스톨러 아이콘 — 저장소 로고 자산을 컴파일 타임에 임베드 (경로는 이 스크립트 기준)
 !define MUI_ICON   "${__FILEDIR__}\..\assets\logo\logo.ico"
 !define MUI_UNICON "${__FILEDIR__}\..\assets\logo\logo.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APPKEY}.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "지금 실행"
+; 바탕화면 바로가기는 설치가 끝난 뒤 마지막 화면에서 고르게 한다.
+; SHOWREADME 는 원래 파일을 여는 용도지만, 경로를 비우면 체크박스와 콜백만 남는다.
+!define MUI_FINISHPAGE_SHOWREADME ""
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "바탕화면에 바로가기 만들기"
+!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
 
 ; ----- 설치 옵션 페이지 (nsDialogs) -----
 ; 서버 저장소 주소를 미리 받아 두면 앱 첫 실행 때 초기 설정 화면에 채워진다.
 ; 비워 두고 넘어가도 된다 — 그때는 앱에서 직접 입력하거나 GitHub 계정에 새로 만든다.
 Var Dialog
 Var RepoUrlText
-Var DesktopCheck
 Var RepoUrl        ; 입력값 (빈 값 = 건너뜀)
-Var MakeDesktop    ; 바탕화면 바로가기 생성 여부
 
 Function OptionsPageCreate
-  !insertmacro MUI_HEADER_TEXT "설치 옵션" "서버 저장소와 바로가기를 설정합니다."
+  !insertmacro MUI_HEADER_TEXT "설치 옵션" "설정을 보관할 서버 저장소를 지정합니다."
   nsDialogs::Create 1018
   Pop $Dialog
   ${If} $Dialog == error
     Abort
   ${EndIf}
 
-  ${NSD_CreateLabel} 0 0 100% 26u "Claude Code 설정을 보관할 서버 저장소 주소입니다.$\r$\n지금 비워 두면 앱을 처음 실행할 때 입력하거나 GitHub 계정에 새로 만들 수 있습니다."
+  ${NSD_CreateLabel} 0 0 100% 26u "Claude Code 설정을 보관할 서버 저장소 주소입니다. 이미 만들어 둔 저장소여야 합니다.$\r$\n지금 비워 두면 앱을 처음 실행할 때 입력하거나 GitHub 계정에 새로 만들 수 있습니다."
   Pop $0
 
   ${NSD_CreateLabel} 0 32u 100% 11u "저장소 URL (선택)"
@@ -81,26 +83,21 @@ Function OptionsPageCreate
   ${NSD_CreateLabel} 0 60u 100% 11u "예: https://github.com/OWNER/REPO.git"
   Pop $0
 
-  ${NSD_CreateCheckbox} 0 84u 100% 12u "바탕화면에 바로가기 만들기"
-  Pop $DesktopCheck
-  ${If} $MakeDesktop == ${BST_UNCHECKED}
-    ${NSD_Uncheck} $DesktopCheck
-  ${Else}
-    ${NSD_Check} $DesktopCheck
-  ${EndIf}
-
   nsDialogs::Show
 FunctionEnd
 
 Function OptionsPageLeave
   ${NSD_GetText} $RepoUrlText $RepoUrl
-  ${NSD_GetState} $DesktopCheck $MakeDesktop
 FunctionEnd
 
-; 재설치라면 이전에 넣은 주소를 다시 보여준다. 바로가기는 기본 체크.
+; 재설치라면 이전에 넣은 주소를 다시 보여준다.
 Function .onInit
   ReadRegStr $RepoUrl HKCU "Software\${APPKEY}" "RepoUrl"
-  StrCpy $MakeDesktop ${BST_CHECKED}
+FunctionEnd
+
+; 마지막 화면의 '바탕화면에 바로가기 만들기' 체크박스가 부른다.
+Function CreateDesktopShortcut
+  CreateShortcut "$DESKTOP\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
 FunctionEnd
 
 !insertmacro MUI_PAGE_WELCOME
@@ -140,9 +137,7 @@ Section "Install"
   ; ----- 바로가기 -----
   CreateDirectory "$SMPROGRAMS\${APPDISPLAY}"
   CreateShortcut "$SMPROGRAMS\${APPDISPLAY}\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
-  ${If} $MakeDesktop == ${BST_CHECKED}
-    CreateShortcut "$DESKTOP\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
-  ${EndIf}
+  ; 바탕화면 바로가기는 마지막 화면의 체크박스가 만든다 (CreateDesktopShortcut).
 
   ; ----- 등록 + uninstaller -----
   WriteRegStr HKCU "Software\${APPKEY}" "InstallDir" "$INSTDIR"

@@ -73,9 +73,12 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
   PC 에서 실행 자체가 안 된다. per-user 설치라 재배포 패키지를 깔 수 없어(관리자 권한) 앱 폴더에 동봉한다.
   툴셋을 올리면 `VC\Redist\MSVC\<ver>\x64\Microsoft.VC143.CRT\` 에서 3개를 다시 복사한다.
 
-**설치 옵션 페이지**: Directory 다음에 nsDialogs 커스텀 페이지가 하나 있다 — 서버 저장소 URL(선택)과
-바탕화면 바로가기 여부. URL 을 넣으면 `HKCU\Software\ClaudeCodeStudio` 의 `RepoUrl` 값에 기록된다.
-비워 두면 기록하지 않는다(건너뛰기). 바로가기 체크박스는 기본 켬 — 시작 메뉴 바로가기는 항상 만든다.
+**설치 옵션 페이지**: Directory 다음에 nsDialogs 커스텀 페이지가 하나 있다 — 서버 저장소 URL(선택) 하나만 받는다.
+넣으면 `HKCU\Software\ClaudeCodeStudio` 의 `RepoUrl` 값에 기록되고, 비우면 기록하지 않는다(건너뛰기).
+
+**바탕화면 바로가기는 마지막(Finish) 화면의 체크박스**가 만든다. MUI 의 `SHOWREADME` 슬롯에 경로 대신 빈
+문자열을 주고 `CreateDesktopShortcut` 을 콜백으로 걸었다 — 체크박스와 콜백만 쓰는 관용적 활용이다.
+시작 메뉴 바로가기는 옵션과 무관하게 항상 만든다.
 
 ## 첫 실행 (초기 설정)
 
@@ -84,6 +87,7 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
 화면은 두 갈래다.
 
 - **서버 주소를 직접 입력** — `bootstrap` 명령. 입력칸은 인스톨러가 남긴 `RepoUrl`(있으면)로만 채워진다.
+  **이미 있는 저장소를 연결하는 갈래다** — 없는 URL 을 넣으면 `fetch` 가 실패하고 롤백된다(저장소를 만들지 않는다).
 - **GitHub 계정에 새로 만들기** — `createRepo` 명령. `gh` CLI 에 위임한다
   (`gh api user --jq .login` 으로 계정 확인 → `gh repo view` 로 존재 확인 → 없으면 `gh repo create`).
   gh 미설치면 이 갈래는 잠긴다.
