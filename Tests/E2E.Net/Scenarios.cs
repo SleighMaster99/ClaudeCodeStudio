@@ -133,6 +133,13 @@ public class Scenarios
         StringAssert.Matches(code, new Regex("^[0-9A-Za-z]{4}-[0-9A-Za-z]{4}$"),
             $"브라우저에 넣을 일회용 코드가 화면에 뜬다 (실제: '{code}')");
         Assert.IsTrue(app.Driver.FindElement(By.Id("ghCodeBox")).Displayed, "코드 영역이 열린다");
+
+        // 승인 여부를 실제로 되묻고 있는지 — 승인 전이라 authorization_pending 이 돌아와야 한다.
+        // 이게 안 뜨면 폴링이 돌지 않는 것이고, 승인해도 화면이 바뀌지 않는다.
+        string hint = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghCodeHint")).Text; } catch { return ""; } },
+            s => s.Contains("확인 중"), 25000);
+        StringAssert.Contains(hint, "authorization_pending", $"승인 대기 폴링이 돈다 (실제: '{hint}')");
     }
 
     [TestMethod]

@@ -159,10 +159,11 @@ function renderStatus(s) {
   const setup = $("setup");
   const body = document.querySelector(".body");
 
-  // 미설정(git repo 아님) → 초기 설정 화면만 노출
+  // 미설정(git repo 아님) → 초기 설정 화면만 노출. 상태바도 숨긴다 — 연결된 서버가 아직 없다.
   if (s.configured === false) {
     setup.hidden = false;
     if (body) body.style.display = "none";
+    $("statusbar").hidden = true;
     const sb = $("setupBtn");
     if (sb) { sb.disabled = false; sb.textContent = "시작"; }
     if (!ghAsked) { ghAsked = true; send("ghInfo"); }
@@ -170,6 +171,7 @@ function renderStatus(s) {
   }
   setup.hidden = true;
   if (body) body.style.display = "";
+  $("statusbar").hidden = false;
 
   const el = $("status");
   const wire = $("wire");
@@ -323,9 +325,14 @@ function handle(msg) {
       break;
     case "ghLogin":
       $("ghCode").textContent = msg.code || "—";
+      $("ghCodeHint").textContent = "승인하면 자동으로 넘어갑니다";
       $("ghCodeBox").hidden = false;
       $("ghLoginBtn").textContent = "브라우저에서 승인하세요";
       startGhPoll();
+      break;
+    case "ghPending":
+      // 확인이 돌고 있음을 드러낸다. 승인 전 authorization_pending 은 정상이다.
+      $("ghCodeHint").textContent = msg.note ? ("확인 중 · " + msg.note) : "확인 중…";
       break;
     case "log":
       hideBusy();          // 모든 원격 작업이 마지막에 log 를 보낸다
@@ -386,6 +393,15 @@ $("ghLoginBtn").addEventListener("click", function () {
   this.textContent = "로그인 준비 중…";
   send("ghLogin");
 });
+
+// 브라우저에서 승인하고 앱으로 돌아오면 다음 주기를 기다리지 않고 바로 확인한다.
+// 창이 가려져 있는 동안 타이머가 느려지는 경우도 이걸로 만회된다.
+function pollNowIfWaiting() { if (ghPollTimer) send("ghPoll"); }
+window.addEventListener("focus", pollNowIfWaiting);
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) pollNowIfWaiting();
+});
+document.addEventListener("pointerenter", pollNowIfWaiting);
 
 $("setupBtn").addEventListener("click", function () {
   // '새로 만들기' 는 owner/repo/private 을 함께 보내야 해서 send() 대신 직접 구성한다.

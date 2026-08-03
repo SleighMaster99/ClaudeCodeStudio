@@ -157,6 +157,7 @@ body {
 /* status bar */
 .statusbar { display:flex; align-items:center; gap:8px; padding:9px 14px; border-top:1px solid var(--line);
   background:var(--win); font-family:var(--font-mono); font-size:0.6875rem; color:var(--ink3); flex:none; }
+.statusbar[hidden] { display:none; }   /* [hidden] 이 display:flex 에 지지 않도록 */
 .conn { display:flex; align-items:center; gap:6px; color:var(--good); }
 .conn.off { color:var(--ink3); }
 .conn-dot { width:7px; height:7px; border-radius:50%; background:currentColor; }

@@ -211,6 +211,13 @@ static std::string LoadToken() {
     return token;
 }
 
+// 이번 실행 동안의 토큰. 파일 저장이 실패해도 세션은 이어갈 수 있게 메모리에도 들고 있는다.
+static std::string g_token;
+static std::string CurrentToken() {
+    if (g_token.empty()) g_token = LoadToken();
+    return g_token;
+}
+
 // 토큰을 git 자격증명 저장소에 넣는다. 이게 없으면 저장소는 만들어져도 첫 push 에서 막힌다.
 static void StoreGitCredential(const std::string& user, const std::string& token) {
     std::string input = "protocol=https\nhost=github.com\nusername=" + user +
@@ -570,7 +577,7 @@ static void CmdBootstrap(const std::string& url) {
 
 // 초기 설정 화면이 쓸 정보: 로그인 여부와 계정, 인스톨러가 남긴 저장소 URL.
 static void CmdGhInfo() {
-    std::string account = AccountFromToken(LoadToken());
+    std::string account = AccountFromToken(CurrentToken());
 
     // repoDir 을 오버라이드한 검증 실행에서는 이 PC 의 설치 흔적을 끌어오지 않는다.
     std::string suggested = EnvVar(L"CCSTUDIO_CLAUDE_DIR").empty() ? RegRead(L"RepoUrl") : "";
@@ -617,23 +624,40 @@ static void CmdGhPoll() {
                        "\",\"device_code\":\"" + g_deviceCode +
                        "\",\"grant_type\":\"urn:ietf:params:oauth:grant-type:device_code\"}";
     std::string resp;
-    if (HttpJson(L"POST", L"github.com", L"/login/oauth/access_token", body, "", resp) != 200) return;
+    DWORD st = HttpJson(L"POST", L"github.com", L"/login/oauth/access_token", body, "", resp);
+    if (st != 200) {
+        // 일시적 네트워크 문제일 수 있어 로그인을 접지는 않는다. 다만 조용히 넘어가면
+        // 화면이 멈춘 것처럼 보이므로 무슨 일인지 남긴다.
+        PostToWeb("{\"type\":\"ghPending\",\"note\":\"HTTP " + std::to_string(st) + "\"}");
+        return;
+    }
 
     std::string token = JsonGet(resp, "access_token");
     if (token.empty()) {
-        // authorization_pending / slow_down 은 정상 흐름이라 그냥 다음 폴링을 기다린다.
         std::string err = JsonGet(resp, "error");
         if (err == "expired_token" || err == "access_denied") {
             g_deviceCode.clear();
             Result(false, "로그인이 완료되지 않았습니다", err);
+            return;
         }
+        // authorization_pending / slow_down 은 정상 흐름 — 폴링이 살아 있음을 알리고 기다린다.
+        PostToWeb("{\"type\":\"ghPending\",\"note\":\"" + JsonEsc(err) + "\"}");
         return;
     }
 
+    // 승인됐다. 여기서 조용히 실패하면 화면이 '로그인 필요' 로 머물러 원인을 알 수 없으므로
+    // 각 단계의 실패를 그대로 드러낸다.
     g_deviceCode.clear();
-    SaveToken(token);
+    g_token = token;
+    if (!SaveToken(token))
+        PostToWeb("{\"type\":\"ghPending\",\"note\":\"토큰을 저장하지 못했습니다 (이번 실행에만 유지)\"}");
+
     std::string account = AccountFromToken(token);
-    if (!account.empty()) StoreGitCredential(account, token);   // push 가 바로 되게
+    if (account.empty()) {
+        Result(false, "로그인은 됐지만 계정을 읽지 못했습니다", "네트워크를 확인하고 ⟳ 를 누르세요");
+        return;
+    }
+    StoreGitCredential(account, token);   // push 가 바로 되게
     CmdGhInfo();
 }
 
@@ -645,7 +669,7 @@ static void CmdCreateRepo(const std::string& req) {
     bool isPrivate = JsonGet(req, "private") != "false";
     if (owner.empty() || name.empty()) { Result(false, "계정명과 저장소 이름이 필요합니다", ""); return; }
 
-    std::string token = LoadToken();
+    std::string token = CurrentToken();
     if (token.empty()) { Result(false, "먼저 GitHub 로그인이 필요합니다", ""); return; }
 
     std::string resp;

@@ -56,7 +56,7 @@
         <div id="ghCodeBox" class="setup-code" hidden>
           <span class="setup-code-cap">브라우저에 이 코드를 입력하세요</span>
           <b id="ghCode" class="setup-code-val">—</b>
-          <span class="setup-code-cap">승인하면 자동으로 넘어갑니다</span>
+          <span id="ghCodeHint" class="setup-code-cap">승인하면 자동으로 넘어갑니다</span>
         </div>
       </div>
 
@@ -119,7 +119,8 @@
     </section>
   </div>
 
-  <footer class="statusbar">
+  <!-- 초기 설정 중에는 숨긴다 — 아직 연결된 서버가 없어 '연결됨' 이 거짓말이 된다 -->
+  <footer id="statusbar" class="statusbar" hidden>
     <span id="conn" class="conn"><span class="conn-dot"></span>연결됨</span>
     <span class="sb-sep">·</span>
     <span id="repoUrlFoot" class="sb-repo">—</span>
