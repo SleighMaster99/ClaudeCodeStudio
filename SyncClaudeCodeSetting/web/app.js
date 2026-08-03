@@ -395,13 +395,12 @@ $("ghLoginBtn").addEventListener("click", function () {
 });
 
 // 브라우저에서 승인하고 앱으로 돌아오면 다음 주기를 기다리지 않고 바로 확인한다.
-// 창이 가려져 있는 동안 타이머가 느려지는 경우도 이걸로 만회된다.
+// 실제 질의 간격은 C++ 이 지키므로(GitHub 이 정한 최소 간격) 여기서 더 불러도 안전하다.
 function pollNowIfWaiting() { if (ghPollTimer) send("ghPoll"); }
 window.addEventListener("focus", pollNowIfWaiting);
 document.addEventListener("visibilitychange", function () {
   if (!document.hidden) pollNowIfWaiting();
 });
-document.addEventListener("pointerenter", pollNowIfWaiting);
 
 $("setupBtn").addEventListener("click", function () {
   // '새로 만들기' 는 owner/repo/private 을 함께 보내야 해서 send() 대신 직접 구성한다.

@@ -591,6 +591,13 @@ static void CmdGhInfo() {
 
 // 승인을 기다리는 Device Flow 상태. 폴링은 웹이 주기적으로 ghPoll 을 보내 진행한다.
 static std::string g_deviceCode;
+static int         g_pollIntervalSec = 5;   // GitHub 이 응답으로 알려 주는 최소 간격
+static ULONGLONG   g_nextPollAt = 0;        // 이 시각 전에는 GitHub 에 묻지 않는다
+
+// 다음 질의 시각을 현재로부터 간격만큼 미룬다.
+static void DeferNextPoll() {
+    g_nextPollAt = GetTickCount64() + (ULONGLONG)g_pollIntervalSec * 1000;
+}
 
 // 브라우저 인증을 시작한다. 일회용 코드를 화면에 띄우고 브라우저를 연 뒤 곧바로 돌아온다.
 // 승인될 때까지 여기서 기다리면 창이 멈추므로, 확인은 ghPoll 이 나눠 맡는다.
@@ -612,6 +619,12 @@ static void CmdGhLogin() {
     }
     if (uri.empty()) uri = "https://github.com/login/device";
 
+    // 응답이 알려 준 최소 간격에 1초를 얹는다. 왕복 지연 때문에 서버가 재는 간격이
+    // 우리가 잰 것보다 짧아질 수 있고, 그러면 곧바로 slow_down 으로 되돌아온다.
+    int iv = std::atoi(JsonGet(resp, "interval").c_str());
+    g_pollIntervalSec = (iv > 0 ? iv : 5) + 1;
+    DeferNextPoll();
+
     ShellExecuteW(nullptr, L"open", Widen(uri).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     PostToWeb("{\"type\":\"ghLogin\",\"code\":\"" + JsonEsc(userCode) + "\"}");
 }
@@ -619,6 +632,11 @@ static void CmdGhLogin() {
 // 승인됐는지 한 번만 확인한다. 아직이면 조용히 넘어간다 — 웹이 다시 부른다.
 static void CmdGhPoll() {
     if (g_deviceCode.empty()) { CmdGhInfo(); return; }
+
+    // 웹은 타이머로도, 창이 돌아올 때도 부른다. 최소 간격은 여기서 지킨다 —
+    // 어기면 GitHub 이 slow_down 으로 되받고, 그 요청은 승인 여부를 알려주지 않는다.
+    if (GetTickCount64() < g_nextPollAt) return;
+    DeferNextPoll();
 
     std::string body = std::string("{\"client_id\":\"") + kOAuthClientId +
                        "\",\"device_code\":\"" + g_deviceCode +
@@ -639,6 +657,12 @@ static void CmdGhPoll() {
             g_deviceCode.clear();
             Result(false, "로그인이 완료되지 않았습니다", err);
             return;
+        }
+        if (err == "slow_down") {
+            // 규약대로 간격을 늘린다. 응답이 새 값을 주면 그것을, 아니면 5초를 더한다.
+            int iv = std::atoi(JsonGet(resp, "interval").c_str());
+            g_pollIntervalSec = (iv > 0 ? iv : g_pollIntervalSec) + 5;
+            DeferNextPoll();
         }
         // authorization_pending / slow_down 은 정상 흐름 — 폴링이 살아 있음을 알리고 기다린다.
         PostToWeb("{\"type\":\"ghPending\",\"note\":\"" + JsonEsc(err) + "\"}");
