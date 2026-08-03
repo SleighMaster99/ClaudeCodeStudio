@@ -59,13 +59,29 @@ static std::wstring ExeDir() {
 }
 
 // ---------- app state dir / window size ----------
-// 앱 로컬 상태(창 크기, WebView2 프로필) 저장 위치.
-// 기본 %LOCALAPPDATA%\ClaudeCodeStudio, 테스트 격리는 CCSTUDIO_STATE_DIR 오버라이드.
+// 앱 로컬 상태(창 크기, WebView2 프로필, GitHub 토큰) 저장 위치.
+// 기본 %LOCALAPPDATA%\SleighMaster\ClaudeCodeStudio, 테스트 격리는 CCSTUDIO_STATE_DIR 오버라이드.
 static std::wstring StateDir() {
     std::wstring o = EnvVar(L"CCSTUDIO_STATE_DIR");
-    return o.empty() ? EnvVar(L"LOCALAPPDATA") + L"\\ClaudeCodeStudio" : o;
+    return o.empty() ? EnvVar(L"LOCALAPPDATA") + L"\\SleighMaster\\ClaudeCodeStudio" : o;
 }
 static std::wstring SizeFilePath() { return StateDir() + L"\\window_size.txt"; }
+
+// 회사 폴더가 생기기 전 자리(%LOCALAPPDATA%\ClaudeCodeStudio)에 상태가 남아 있으면
+// 새 자리로 한 번 옮긴다. 옮기지 않으면 GitHub 로그인을 다시 해야 한다.
+// 새 폴더가 이미 있으면 아무것도 하지 않는다 — 이사는 처음 한 번뿐이다.
+// sync 모듈도 같은 폴더를 보므로, 모듈이 뜨기 전인 Core_Run 초입에서 끝낸다.
+static void MigrateStateDir() {
+    if (!EnvVar(L"CCSTUDIO_STATE_DIR").empty()) return;   // 검증 실행은 격리 폴더를 쓴다
+    std::wstring local = EnvVar(L"LOCALAPPDATA");
+    if (local.empty()) return;
+    fs::path oldDir = fs::path(local) / L"ClaudeCodeStudio";
+    fs::path newDir = fs::path(local) / L"SleighMaster" / L"ClaudeCodeStudio";
+    std::error_code ec;
+    if (!fs::exists(oldDir, ec) || fs::exists(newDir, ec)) return;
+    fs::create_directories(newDir.parent_path(), ec);
+    fs::rename(oldDir, newDir, ec);   // 실패하면 새 폴더에 새로 만든다(로그인만 다시)
+}
 
 static const int kDefaultW = 1920, kDefaultH = 1080;
 
@@ -261,6 +277,8 @@ static void InitWebView() {
 extern "C" CORE_API int Core_Run(HINSTANCE hInst, int nCmdShow) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     HRESULT co = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+    MigrateStateDir();   // 창 크기를 읽기 전에 끝낸다 — 옛 자리 값을 그대로 이어받게
 
     g_webDir = ExeDir() + L"\\web";
 

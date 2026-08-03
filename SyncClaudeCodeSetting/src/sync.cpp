@@ -181,7 +181,7 @@ static DWORD HttpJson(const wchar_t* verb, const wchar_t* host, const std::wstri
 // 토큰 파일. 앱 상태 폴더를 따르므로 CCSTUDIO_STATE_DIR 을 쓰는 검증 실행은 자동으로 격리된다.
 static fs::path TokenPath() {
     std::wstring dir = EnvVar(L"CCSTUDIO_STATE_DIR");
-    if (dir.empty()) dir = EnvVar(L"LOCALAPPDATA") + L"\\ClaudeCodeStudio";
+    if (dir.empty()) dir = EnvVar(L"LOCALAPPDATA") + L"\\SleighMaster\\ClaudeCodeStudio";
     return fs::path(dir) / L"github_token.bin";
 }
 
@@ -226,10 +226,10 @@ static void StoreGitCredential(const std::string& user, const std::string& token
 }
 
 
-// 인스톨러가 남긴 값 읽기 (HKCU\Software\ClaudeCodeStudio). 없으면 빈 문자열.
+// 인스톨러가 남긴 값 읽기 (HKCU\Software\SleighMaster\ClaudeCodeStudio). 없으면 빈 문자열.
 static std::string RegRead(const wchar_t* name) {
     HKEY k;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\ClaudeCodeStudio", 0, KEY_READ, &k) != ERROR_SUCCESS)
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\SleighMaster\\ClaudeCodeStudio", 0, KEY_READ, &k) != ERROR_SUCCESS)
         return "";
     wchar_t buf[1024];
     DWORD cb = sizeof(buf), type = 0;
