@@ -264,15 +264,32 @@ void CommitVersionBump(HWND hwnd, const std::wstring& root, const std::string& v
         PostLine(hwnd, "[ERROR] 브랜치 생성 실패. installer\\VERSION 을 직접 커밋하세요.");
         return;
     }
+    std::wstring wb  = Widen(branch);
     std::wstring msg = L"chore: 발행 기준선 " + Widen(version) + L" 갱신";
-    if (RunStreamed(hwnd, L"git.exe commit installer/VERSION -m \"" + msg + L"\"", root) != 0) {
+    bool pushed = false;
+    if (RunStreamed(hwnd, L"git.exe commit installer/VERSION -m \"" + msg + L"\"", root) != 0)
         PostLine(hwnd, "[ERROR] 커밋에 실패했습니다.");
-    } else if (RunStreamed(hwnd, L"git.exe push -u origin " + Widen(branch), root) != 0) {
+    else if (RunStreamed(hwnd, L"git.exe push -u origin " + wb, root) != 0)
         PostLine(hwnd, "[ERROR] push 에 실패했습니다. 커밋은 " + branch + " 에 남아 있습니다.");
-    } else {
-        PostLine(hwnd, "  " + branch + " 에 커밋하고 push 했습니다. PR 로 main 에 머지하세요.");
-    }
+    else
+        pushed = true;
+
+    // 머지 전에 원래 브랜치로 돌아온다 — 체크아웃 중인 브랜치는 삭제할 수 없다.
     if (!prev.empty()) RunStreamed(hwnd, L"git.exe checkout " + Widen(prev), root);
+    if (!pushed) return;
+
+    // VERSION 한 줄 변경이라 리뷰할 것이 없다. PR 을 거쳐 곧바로 스쿼시 머지한다 —
+    // main 직접 커밋을 피하면서도 사람이 손댈 일을 남기지 않는다.
+    PostLine(hwnd, "> gh pr create + gh pr merge --squash");
+    if (RunStreamed(hwnd, L"gh.exe pr create --base main --head " + wb
+                          + L" --title \"" + msg + L"\""
+                          + L" --body \"릴리스 " + Widen(version) + L" 발행에 따른 기준선 갱신.\"", root) != 0
+        || RunStreamed(hwnd, L"gh.exe pr merge " + wb + L" --squash --delete-branch", root) != 0) {
+        PostLine(hwnd, "[TODO] 자동 머지에 실패했습니다. " + branch + " 를 직접 머지하세요.");
+        return;
+    }
+    if (prev == "main") RunStreamed(hwnd, L"git.exe pull --ff-only", root);   // 로컬을 머지 결과에 맞춘다
+    PostLine(hwnd, "  " + branch + " 를 main 에 머지했습니다.");
 }
 
 DWORD WINAPI PublishThread(LPVOID param) {

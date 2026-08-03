@@ -59,9 +59,11 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
 파일만 보면 VERSION 커밋을 빠뜨린 clone 이 이미 배포한 버전을 다시 만든다.
 오프라인이거나 `--sort` 를 모르는 구버전 git 이면 조용히 파일 값만 쓴다. `0.0.0` = 아직 발행 없음.
 
-**`VERSION` 커밋은 ReleaseTool 이 한다.** 배포(`gh release create`)가 성공하면
-`chore/version-<ver>` 브랜치를 만들어 `installer\VERSION` 만 커밋·push 하고 원래 브랜치로 돌아온다.
-전용 브랜치를 쓰는 이유는 이 저장소가 main 직접 커밋을 금지하기 때문 — 머지는 사람이 PR 로 한다.
+**`VERSION` 커밋·머지는 ReleaseTool 이 끝까지 한다.** 배포(`gh release create`)가 성공하면
+`chore/version-<ver>` 브랜치에 `installer\VERSION` 만 커밋·push → 원래 브랜치로 복귀 →
+`gh pr create` + `gh pr merge --squash --delete-branch` 까지 이어간다.
+전용 브랜치와 PR 을 거치는 이유는 이 저장소가 main 직접 커밋을 금지하기 때문이고,
+한 줄짜리 기계적 변경이라 리뷰를 사람에게 남기지 않는다. 머지가 실패하면 로그에 남기고 브랜치는 보존한다.
 `Build.bat` 을 콘솔에서 직접 부른 경우에는 파일만 갱신되므로 직접 커밋해야 한다.
 
 **주의할 점 세 가지**:
