@@ -76,7 +76,8 @@ Build.bat 1.0.1 --skip-build   # 기존 bin\Release 재사용
 산출물은 `Shipping/ClaudeCodeStudio-Setup-<버전>.exe` 이며, 같은 폴더의 `Shipping/<버전>/` 에는
 설치 없이 바로 실행할 수 있는 파일 일습이 남는다. NSIS 3.x 가 필요하다.
 
-설치본은 `%LOCALAPPDATA%\Programs\ClaudeCodeStudio` 에 설치되며 관리자 권한이 필요 없다.
+설치본은 `%LOCALAPPDATA%\Programs\SleighMaster\ClaudeCodeStudio` 에 설치되며 관리자 권한이 필요 없다.
+설치 위치를 바꿔도 `{회사}\{프로그램}` 구조는 유지된다.
 Visual C++ 런타임(`vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll`)을 함께 담으므로
 재배포 패키지가 없는 PC 에서도 실행된다.
 

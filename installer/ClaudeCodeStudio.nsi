@@ -23,13 +23,18 @@ Unicode true
 
 !define APPKEY     "ClaudeCodeStudio"
 !define APPDISPLAY "ClaudeCodeStudio"
-!define COMPANY    "SleighMaster99"
+!define COMPANY    "SleighMaster"
+
+; 설치 폴더 · 시작 메뉴 · 레지스트리를 모두 {회사}\{프로그램} 으로 묶는다.
+; 회사 폴더는 프로그램이 늘어나도 자리가 흩어지지 않게 하는 칸막이다.
+!define REGKEY     "Software\${COMPANY}\${APPKEY}"
+!define OLDREGKEY  "Software\${APPKEY}"            ; 회사 폴더가 없던 시절의 자리
 
 Name "${APPDISPLAY} ${VERSION}"
 OutFile "${OUT_FILE}"
 RequestExecutionLevel user
-InstallDir "$LOCALAPPDATA\Programs\${APPKEY}"
-InstallDirRegKey HKCU "Software\${APPKEY}" "InstallDir"
+InstallDir "$LOCALAPPDATA\Programs\${COMPANY}\${APPKEY}"
+InstallDirRegKey HKCU "${REGKEY}" "InstallDir"
 SetCompressor /SOLID lzma
 
 VIProductVersion "${VERSION}.0"
@@ -43,6 +48,8 @@ VIAddVersionKey "FileDescription" "${APPDISPLAY} Setup"
 !include "MUI2.nsh"
 !include "nsDialogs.nsh"
 !include "LogicLib.nsh"
+!include "FileFunc.nsh"
+!insertmacro un.GetParent      ; 언인스톨에서 회사 폴더(설치 폴더의 부모)를 구할 때 쓴다
 !define MUI_ABORTWARNING
 ; Setup / 언인스톨러 아이콘 — 저장소 로고 자산을 컴파일 타임에 임베드 (경로는 이 스크립트 기준)
 !define MUI_ICON   "${__FILEDIR__}\..\assets\logo\logo.ico"
@@ -91,8 +98,50 @@ Function OptionsPageLeave
 FunctionEnd
 
 ; 재설치라면 이전에 넣은 주소를 다시 보여준다.
+; 회사 폴더가 없던 설치본이 남아 있으면 여기서 함께 정리한다 — 두면 시작 메뉴와
+; 프로그램 제거 목록에 같은 앱이 둘로 보인다.
 Function .onInit
-  ReadRegStr $RepoUrl HKCU "Software\${APPKEY}" "RepoUrl"
+  ReadRegStr $RepoUrl HKCU "${REGKEY}" "RepoUrl"
+  ${If} $RepoUrl == ""
+    ReadRegStr $RepoUrl HKCU "${OLDREGKEY}" "RepoUrl"   ; 옛 설치본이 남긴 값을 이어받는다
+  ${EndIf}
+
+  ReadRegStr $0 HKCU "${OLDREGKEY}" "InstallDir"
+  ${If} $0 != ""
+  ${AndIf} ${FileExists} "$0\uninstall.exe"
+    ; /S 는 조용히, _?= 는 언인스톨러를 임시 폴더로 복사하지 않게 한다
+    ; (복사하면 ExecWait 가 곧바로 돌아와 뒤이은 삭제가 어긋난다).
+    ExecWait '"$0\uninstall.exe" /S _?=$0'
+    Delete "$0\uninstall.exe"
+    RMDir "$0"
+  ${EndIf}
+FunctionEnd
+
+; 다른 위치를 골라도 {회사}\{프로그램} 구조를 지킨다.
+; NSIS 는 browse 로 고른 폴더에 마지막 조각(ClaudeCodeStudio)만 되붙이므로
+; 그대로 두면 회사 폴더가 빠진 자리에 설치된다.
+Function DirectoryLeave
+  Push $0
+  Push $1
+  StrLen $0 "\${COMPANY}\${APPKEY}"
+  StrCpy $1 "$INSTDIR" "" -$0
+  ${If} $1 != "\${COMPANY}\${APPKEY}"          ; 이미 맞는 모양이면(기본값·재설치) 손대지 않는다
+    StrLen $0 "\${APPKEY}"
+    StrCpy $1 "$INSTDIR" "" -$0
+    ${If} $1 == "\${APPKEY}"
+      StrCpy $INSTDIR "$INSTDIR" -$0           ; NSIS 가 붙인 \ClaudeCodeStudio 를 뗀다
+    ${EndIf}
+    ; 회사 폴더를 이미 가리키고 있으면 프로그램 이름만 붙인다 — 회사명이 두 번 들어가지 않게.
+    StrLen $0 "\${COMPANY}"
+    StrCpy $1 "$INSTDIR" "" -$0
+    ${If} $1 == "\${COMPANY}"
+      StrCpy $INSTDIR "$INSTDIR\${APPKEY}"
+    ${Else}
+      StrCpy $INSTDIR "$INSTDIR\${COMPANY}\${APPKEY}"
+    ${EndIf}
+  ${EndIf}
+  Pop $1
+  Pop $0
 FunctionEnd
 
 ; 마지막 화면의 '바탕화면에 바로가기 만들기' 체크박스가 부른다.
@@ -101,6 +150,7 @@ Function CreateDesktopShortcut
 FunctionEnd
 
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE DirectoryLeave
 !insertmacro MUI_PAGE_DIRECTORY
 Page custom OptionsPageCreate OptionsPageLeave
 !insertmacro MUI_PAGE_INSTFILES
@@ -135,15 +185,16 @@ Section "Install"
   File /r "${STAGE_DIR}\web\*.*"
 
   ; ----- 바로가기 -----
-  CreateDirectory "$SMPROGRAMS\${APPDISPLAY}"
-  CreateShortcut "$SMPROGRAMS\${APPDISPLAY}\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
+  ; 시작 메뉴도 회사 폴더로 묶는다 — 프로그램이 늘어도 한자리에 모인다.
+  CreateDirectory "$SMPROGRAMS\${COMPANY}"
+  CreateShortcut "$SMPROGRAMS\${COMPANY}\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
   ; 바탕화면 바로가기는 마지막 화면의 체크박스가 만든다 (CreateDesktopShortcut).
 
   ; ----- 등록 + uninstaller -----
-  WriteRegStr HKCU "Software\${APPKEY}" "InstallDir" "$INSTDIR"
+  WriteRegStr HKCU "${REGKEY}" "InstallDir" "$INSTDIR"
   ; 앱의 초기 설정 화면이 이 값을 저장소 URL 로 미리 채운다 (비었으면 기록하지 않는다).
   ${If} $RepoUrl != ""
-    WriteRegStr HKCU "Software\${APPKEY}" "RepoUrl" "$RepoUrl"
+    WriteRegStr HKCU "${REGKEY}" "RepoUrl" "$RepoUrl"
   ${EndIf}
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -172,10 +223,17 @@ Section "Uninstall"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
 
-  Delete "$SMPROGRAMS\${APPDISPLAY}\${APPDISPLAY}.lnk"
-  RMDir  "$SMPROGRAMS\${APPDISPLAY}"
+  ; 회사 폴더·시작 메뉴 폴더는 /r 없이 지운다 — 비어 있을 때만 사라진다.
+  ; 같은 회사의 다른 프로그램이 들어 있으면 그대로 둔다.
+  ${un.GetParent} "$INSTDIR" $0
+  RMDir "$0"
+
+  Delete "$SMPROGRAMS\${COMPANY}\${APPDISPLAY}.lnk"
+  RMDir  "$SMPROGRAMS\${COMPANY}"
   Delete "$DESKTOP\${APPDISPLAY}.lnk"
 
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPKEY}"
-  DeleteRegKey HKCU "Software\${APPKEY}"
+  DeleteRegKey HKCU "${REGKEY}"
+  ; 회사 키도 같은 규칙 — 하위 키나 값이 남아 있으면 지우지 않는다.
+  DeleteRegKey /ifempty HKCU "Software\${COMPANY}"
 SectionEnd

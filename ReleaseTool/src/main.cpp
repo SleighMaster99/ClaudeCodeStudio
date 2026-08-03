@@ -202,7 +202,7 @@ static void InitWebView() {
     wchar_t local[MAX_PATH]{};
     DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
     std::wstring userData = (n ? std::wstring(local) : ExeDir())
-                          + L"\\ClaudeCodeStudio\\ReleaseTool\\WebView2";
+                          + L"\\SleighMaster\\ClaudeCodeStudio\\ReleaseTool\\WebView2";
 
     // 가상 호스트를 DNS 로 조회하려다 콜드 스타트가 늘어지는 것을 막는다 (Core 와 동일).
     auto envOptions = Make<CoreWebView2EnvironmentOptions>();

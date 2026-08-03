@@ -6,7 +6,7 @@ Claude Code 설정 관리 Windows 통합 앱 (C++ + WebView2). 좌측 탭 3개:
 - **⚙ 설정** — 셸이 직접 소유(모듈 아님). 카테고리 탭(일반/화면/동기화) + 전 카테고리 검색.
   일반=시작 탭·창 크기, 화면=테마·글자 크기·글꼴, 동기화=자동 새로고침·시작 시 원격 확인·이력 개수·커밋 메시지 형식·기본 저장소 URL.
   값은 웹 `localStorage`(`ccs.ui.settings.v1` / `ccs.sync.settings.v1`)에 저장되고,
-  창 크기만 C++ 이 `%LOCALAPPDATA%\ClaudeCodeStudio\window_size.txt` 에 기록한다(`CCSTUDIO_STATE_DIR` 로 오버라이드).
+  창 크기만 C++ 이 `%LOCALAPPDATA%\SleighMaster\ClaudeCodeStudio\window_size.txt` 에 기록한다(`CCSTUDIO_STATE_DIR` 로 오버라이드).
 
 statusLine 렌더는 PowerShell 런타임 `StatusLine.ps1` 이 담당(유지). 앱은 번들 + 설정만 관리.
 
@@ -76,11 +76,42 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
   툴셋을 올리면 `VC\Redist\MSVC\<ver>\x64\Microsoft.VC143.CRT\` 에서 3개를 다시 복사한다.
 
 **설치 옵션 페이지**: Directory 다음에 nsDialogs 커스텀 페이지가 하나 있다 — 서버 저장소 URL(선택) 하나만 받는다.
-넣으면 `HKCU\Software\ClaudeCodeStudio` 의 `RepoUrl` 값에 기록되고, 비우면 기록하지 않는다(건너뛰기).
+넣으면 `HKCU\Software\SleighMaster\ClaudeCodeStudio` 의 `RepoUrl` 값에 기록되고, 비우면 기록하지 않는다(건너뛰기).
 
 **바탕화면 바로가기는 마지막(Finish) 화면의 체크박스**가 만든다. MUI 의 `SHOWREADME` 슬롯에 경로 대신 빈
 문자열을 주고 `CreateDesktopShortcut` 을 콜백으로 걸었다 — 체크박스와 콜백만 쓰는 관용적 활용이다.
 시작 메뉴 바로가기는 옵션과 무관하게 항상 만든다.
+
+## 설치·설정 경로는 `{회사}\{프로그램}` 으로 묶는다
+
+회사 이름은 `SleighMaster` 다. 프로그램이 늘어도 자리가 흩어지지 않게 한 칸 아래로 묶었다.
+
+| 무엇 | 경로 | 정의 위치 |
+| --- | --- | --- |
+| 설치 폴더 | `%LOCALAPPDATA%\Programs\SleighMaster\ClaudeCodeStudio` | `nsi` `InstallDir` |
+| 상태 폴더 | `%LOCALAPPDATA%\SleighMaster\ClaudeCodeStudio` | `host.cpp` `StateDir()`, `sync.cpp` `TokenPath()` |
+| 시작 메뉴 | `$SMPROGRAMS\SleighMaster\ClaudeCodeStudio.lnk` | `nsi` Section |
+| 레지스트리 | `HKCU\Software\SleighMaster\ClaudeCodeStudio` | `nsi` `${REGKEY}`, `sync.cpp` `RegRead()` |
+
+**바탕화면 바로가기와 프로그램 제거 목록 키는 회사 폴더를 쓰지 않는다.**
+제거 목록(`...\Uninstall\<키>`)은 Windows 가 평평한 구조로 읽어서, 하위 키로 넣으면 목록에 뜨지 않는다.
+
+**설치 위치를 바꿔도 구조가 유지된다** — `DirectoryLeave`(Directory 페이지 LEAVE 콜백)가 `$INSTDIR` 을 보정한다.
+NSIS 는 browse 로 고른 폴더에 **마지막 조각 하나만**(`ClaudeCodeStudio`) 되붙이므로 그냥 두면 회사 폴더가 빠진다.
+이미 `\SleighMaster\ClaudeCodeStudio` 로 끝나면 손대지 않고, `\SleighMaster` 로 끝나면 프로그램 이름만 붙인다
+(회사명 중복 방지). 이 로직은 `scratchpad/dirtest.nsi` 방식으로 따로 돌려 5개 입력을 확인했다.
+
+**회사 폴더는 비었을 때만 지운다.** 언인스톨에서 `RMDir`(`/r` 없이) + `DeleteRegKey /ifempty` 를 쓴다 —
+같은 회사의 다른 프로그램이 들어 있으면 그대로 둔다. `${un.GetParent}`(FileFunc.nsh)로 설치 폴더의 부모를 구한다.
+
+**옛 자리에서 올라오는 두 경로:**
+- 설치본 — `.onInit` 이 `HKCU\Software\ClaudeCodeStudio` 의 `InstallDir` 을 보고 옛 언인스톨러를
+  `/S _?=` 로 조용히 돌린다. 두면 시작 메뉴와 제거 목록에 같은 앱이 둘로 보인다. `RepoUrl` 도 이어받는다.
+- 상태 폴더 — `MigrateStateDir()`(`host.cpp`)이 `Core_Run` 초입에서 폴더째 옮긴다. 새 폴더가 이미 있으면
+  아무것도 하지 않는다. sync 모듈보다 먼저 끝나야 해서 위치가 그곳이다. 안 옮기면 GitHub 로그인을 다시 해야 한다.
+
+**설치 경로를 바꾸면 statusLine 이 한 번 끊긴다.** `~/.claude/settings.json` 의 `statusLine` 이 옛 경로를 가리키므로
+상태바 설정 탭에서 **저장 & 적용**을 한 번 눌러야 한다. 그 파일은 동기화 대상이라 PC 마다 한 번씩 필요하다.
 
 ## 첫 실행 (초기 설정)
 
