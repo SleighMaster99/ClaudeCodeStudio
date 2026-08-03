@@ -88,18 +88,25 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
 
 - **서버 주소를 직접 입력** — `bootstrap` 명령. 입력칸은 인스톨러가 남긴 `RepoUrl`(있으면)로만 채워진다.
   **이미 있는 저장소를 연결하는 갈래다** — 없는 URL 을 넣으면 `fetch` 가 실패하고 롤백된다(저장소를 만들지 않는다).
-- **GitHub 계정에 새로 만들기** — `createRepo` 명령. `gh` CLI 에 위임한다
-  (`gh api user --jq .login` 으로 계정 확인 → `gh repo view` 로 존재 확인 → 없으면 `gh repo create`).
-  gh 미설치면 이 갈래는 잠긴다.
+- **GitHub 계정에 새로 만들기** — `createRepo` 명령. `GET /repos/{owner}/{repo}` 로 존재를 보고,
+  없으면 `POST /user/repos` 로 만든 뒤 그 URL 로 `bootstrap` 한다. 로그인 전이면 이 갈래는 잠긴다.
 
-`gh.exe` 는 **PATH 를 먼저 보고, 없으면 표준 설치 경로**(`%ProgramFiles%\GitHub CLI`, winget Links 등)를 직접 확인한다.
-winget/msi 로 막 설치한 세션은 PATH 가 아직 갱신되지 않아 이름만으로는 못 찾기 때문이다.
+## GitHub 인증 (OAuth Device Flow)
 
-**gh 로그인은 앱 안에서 한다** — 터미널을 열 일이 없다. 설치돼 있는데 로그인 전이면 **[GitHub 로그인]** 버튼이 뜨고,
-`ghLogin` 이 `gh auth login --hostname github.com --git-protocol https --skip-ssh-key` 를 파이프로 띄운다.
-플래그로 프롬프트를 미리 채워 대화형 입력이 없고, 일회용 코드가 나오는 즉시 브라우저를 열고 코드를 화면에 띄운다.
-gh 프로세스는 남겨 둔다(승인되면 스스로 끝남) — 종료를 기다리면 창이 멈추고, 워커 스레드에서는 WebView2 로 회신할 수 없다.
-완료 여부는 웹이 3초마다 `ghInfo` 를 물어 감지한다.
+**외부 도구에 기대지 않는다** — `gh` CLI 는 쓰지 않고 앱이 직접 브라우저 인증을 진행한다.
+설치자는 아무것도 준비할 필요가 없고, [GitHub 로그인] 버튼 하나로 끝난다.
+
+- `client_id` 는 소스에 박혀 있다(`kOAuthClientId`). Device Flow 는 **`client_secret` 이 필요 없어** 안전하다.
+  이 값은 저장소 소유자가 등록한 OAuth App 의 것이고, 앱 사용자는 각자 자기 계정으로 승인만 한다.
+- `ghLogin` → `POST github.com/login/device/code` → 일회용 코드를 화면에 띄우고 브라우저를 연다.
+- 승인 여부는 웹이 **5초마다 `ghPoll`** 을 보내 확인한다(GitHub 권장 간격 — 더 조르면 `slow_down`).
+  `ghLogin` 안에서 기다리면 창이 멈추고, 워커 스레드에서는 WebView2 로 회신할 수 없다.
+- 받은 토큰은 **DPAPI 로 암호화**해 앱 상태 폴더의 `github_token.bin` 에 둔다.
+  경로가 `CCSTUDIO_STATE_DIR` 을 따르므로 E2E 는 자동으로 미로그인 상태가 된다.
+- 토큰을 받으면 **`git credential approve` 로 자격증명에도 넣는다** — 이게 없으면 저장소는 만들어져도
+  첫 push 에서 막힌다(`gh auth login` 이 대신 해주던 일이다).
+
+HTTP 는 WinHTTP(`HttpJson`), 응답 파싱은 기존 미니 JSON 파서를 그대로 쓴다 — 필요한 필드가 모두 최상위라 충분하다.
 
 `CmdBootstrap` 은 fetch 후 `origin/main` 유무로 방향을 정한다 — 있으면 서버 것으로 정렬(기존 설정은
 `.sync-backup-<시각>/` 에 백업), 없으면(빈 저장소) 화이트리스트 `.gitignore` 를 만들고 이 PC 설정을 첫 커밋으로 push.

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Interactions;
@@ -110,86 +109,30 @@ public class Scenarios
         Assert.AreNotEqual("", input.GetAttribute("placeholder") ?? "", "입력 형식은 placeholder 로 안내한다");
     }
 
+    // 토큰은 앱 상태 폴더에 있고 E2E 는 그 폴더를 매번 임시로 격리하므로, 테스트는 항상 미로그인으로 뜬다.
+    // 버튼을 누르면 실제 GitHub device flow 가 시작되므로 코드가 화면에 뜨는 것까지 확인할 수 있다.
     [TestMethod]
-    public void 초기설정_GitHub_새로만들기_모드_전환()
+    public void 초기설정_미로그인이면_로그인_버튼으로_인증을_시작한다()
     {
         using var app = CcsApp.Launch(unconfigured: true);
         app.SwitchToModule("sync");
         app.WaitForSelector("#repoUrl", 10000);
 
-        // gh 조회는 왕복이 있으므로 상태 문구가 '확인 중…' 에서 바뀔 때까지 기다린다
-        string state = CcsApp.WaitUntil(
-            () => { try { return app.Driver.FindElement(By.Id("ghState")).Text; } catch { return ""; } },
-            s => s.Length > 0 && !s.Contains("확인 중"), 20000);
+        bool shown = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghLoginBtn")).Displayed; } catch { return false; } },
+            v => v, 20000);
+        Assert.IsTrue(shown, "미로그인이면 [GitHub 로그인] 버튼이 열린다");
+        Assert.IsFalse(app.Driver.FindElement(By.Id("modeNew")).Enabled, "'새로 만들기' 갈래는 잠긴다");
+        StringAssert.Contains(app.Driver.FindElement(By.Id("ghState")).Text, "로그인 필요",
+            "상태 문구가 무엇을 해야 하는지 알려준다");
 
-        var radio = app.Driver.FindElement(By.Id("modeNew"));
-        if (!radio.Enabled) { Assert.Inconclusive($"이 PC 에서는 gh 를 쓸 수 없음: {state}"); return; }
-
-        radio.Click();
-        bool switched = CcsApp.WaitUntil(
-            () => { try { return app.Driver.FindElement(By.Id("newRepoName")).Displayed
-                              && !app.Driver.FindElement(By.Id("repoUrl")).Displayed; } catch { return false; } },
-            v => v, 3000);
-        Assert.IsTrue(switched, "'새로 만들기' 선택 시 저장소 이름이 열리고 URL 입력은 닫힌다");
-    }
-
-    // winget/msi 로 gh 를 막 설치한 세션은 PATH 가 아직 갱신되지 않아 이름만으로는 찾지 못한다.
-    // PATH 에서 GitHub CLI 를 빼고도 표준 설치 경로로 찾아내는지 확인한다.
-    [TestMethod]
-    public void 초기설정_PATH_에_gh_가_없어도_찾아낸다()
-    {
-        string full = Environment.GetEnvironmentVariable("PATH") ?? "";
-        string pruned = string.Join(';',
-            full.Split(';').Where(p => p.IndexOf("GitHub CLI", StringComparison.OrdinalIgnoreCase) < 0));
-        Assert.AreNotEqual(full, pruned, "이 PC 의 PATH 에 GitHub CLI 항목이 있어야 의미 있는 검증이 된다");
-
-        using var app = CcsApp.Launch(unconfigured: true, pathOverride: pruned);
-        app.SwitchToModule("sync");
-        app.WaitForSelector("#repoUrl", 10000);
-
-        string state = CcsApp.WaitUntil(
-            () => { try { return app.Driver.FindElement(By.Id("ghState")).Text; } catch { return ""; } },
-            s => s.Length > 0 && !s.Contains("확인 중"), 20000);
-
-        StringAssert.Contains(state, "✓", $"PATH 에 없어도 gh 를 찾아 계정을 읽는다 (실제: '{state}')");
-        Assert.IsTrue(app.Driver.FindElement(By.Id("modeNew")).Enabled, "'새로 만들기' 갈래가 열린다");
-    }
-
-    // gh 설정 폴더를 빈 임시 폴더로 돌려 '미로그인' 을 만든다 — 이 PC 의 실제 로그인은 건드리지 않는다.
-    // 버튼을 누르면 진짜 gh 가 device flow 를 시작하므로, 코드가 화면에 뜨는 것까지 확인할 수 있다.
-    [TestMethod]
-    public void 초기설정_gh_미로그인이면_앱에서_로그인을_시작한다()
-    {
-        string ghDir = Path.Combine(Path.GetTempPath(), "ccs-e2e-gh-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(ghDir);
-        var before = Process.GetProcessesByName("gh").Select(p => p.Id).ToHashSet();
-        try
-        {
-            using var app = CcsApp.Launch(unconfigured: true, ghConfigDir: ghDir);
-            app.SwitchToModule("sync");
-            app.WaitForSelector("#repoUrl", 10000);
-
-            bool shown = CcsApp.WaitUntil(
-                () => { try { return app.Driver.FindElement(By.Id("ghLoginBtn")).Displayed; } catch { return false; } },
-                v => v, 20000);
-            Assert.IsTrue(shown, "미로그인이면 [GitHub 로그인] 버튼이 열린다");
-            Assert.IsFalse(app.Driver.FindElement(By.Id("modeNew")).Enabled, "'새로 만들기' 갈래는 잠긴다");
-
-            app.Driver.FindElement(By.Id("ghLoginBtn")).Click();
-            string code = CcsApp.WaitUntil(
-                () => { try { return app.Driver.FindElement(By.Id("ghCode")).Text; } catch { return ""; } },
-                s => s.Length > 0 && s != "—", 40000);
-            StringAssert.Matches(code, new Regex("^[0-9A-Za-z]{4}-[0-9A-Za-z]{4}$"),
-                $"브라우저에 넣을 일회용 코드가 화면에 뜬다 (실제: '{code}')");
-            Assert.IsTrue(app.Driver.FindElement(By.Id("ghCodeBox")).Displayed, "코드 영역이 열린다");
-        }
-        finally
-        {
-            // 승인을 기다리는 gh 는 device flow 가 만료될 때까지 살아 있다. 이 테스트가 띄운 것만 정리한다.
-            foreach (var p in Process.GetProcessesByName("gh"))
-                if (!before.Contains(p.Id)) { try { p.Kill(); } catch { } }
-            try { Directory.Delete(ghDir, true); } catch { }
-        }
+        app.Driver.FindElement(By.Id("ghLoginBtn")).Click();
+        string code = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghCode")).Text; } catch { return ""; } },
+            s => s.Length > 0 && s != "—", 40000);
+        StringAssert.Matches(code, new Regex("^[0-9A-Za-z]{4}-[0-9A-Za-z]{4}$"),
+            $"브라우저에 넣을 일회용 코드가 화면에 뜬다 (실제: '{code}')");
+        Assert.IsTrue(app.Driver.FindElement(By.Id("ghCodeBox")).Displayed, "코드 영역이 열린다");
     }
 
     [TestMethod]

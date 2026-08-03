@@ -6,6 +6,8 @@
 // 미설정(git repo 아님) 감지 시 status.configured=false 로 알려 초기 설정(부트스트랩)을 유도한다.
 #include <windows.h>
 #include <shellapi.h>
+#include <winhttp.h>
+#include <wincrypt.h>
 
 #include <string>
 #include <vector>
@@ -14,6 +16,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+
+#pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "crypt32.lib")
 
 #include "module_api.h"
 
@@ -97,35 +103,121 @@ static DWORD RunCapture(const std::wstring& cmdline, const std::wstring& cwd, st
 static DWORD Git(const std::wstring& args, std::string& out) {
     return RunCapture(L"git " + args, g_repoDir, out);
 }
-// gh.exe 전체 경로. PATH 를 먼저 보고, 없으면 표준 설치 위치를 직접 확인한다.
-// winget/msi 로 막 설치한 세션은 PATH 가 아직 갱신되지 않아 이름만으로는 찾지 못한다.
-// 못 찾으면 빈 문자열 — 호출부가 '미설치' 로 다룬다.
-static std::wstring GhExePath() {
-    wchar_t found[MAX_PATH];
-    if (SearchPathW(nullptr, L"gh.exe", nullptr, MAX_PATH, found, nullptr) > 0) return found;
+// stdin 으로 데이터를 넘겨 실행한다 (git credential 등록용). 출력은 버린다.
+static bool RunWithInput(const std::wstring& cmdline, const std::wstring& cwd, const std::string& input) {
+    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
+    HANDLE rd = nullptr, wr = nullptr;
+    if (!CreatePipe(&rd, &wr, &sa, 0)) return false;
+    SetHandleInformation(wr, HANDLE_FLAG_INHERIT, 0);
 
-    const wchar_t* candidates[] = {
-        L"%ProgramFiles%\\GitHub CLI\\gh.exe",
-        L"%ProgramW6432%\\GitHub CLI\\gh.exe",
-        L"%ProgramFiles(x86)%\\GitHub CLI\\gh.exe",
-        L"%LOCALAPPDATA%\\Programs\\GitHub CLI\\gh.exe",
-        L"%LOCALAPPDATA%\\Microsoft\\WinGet\\Links\\gh.exe",
-    };
-    std::error_code ec;
-    for (const wchar_t* c : candidates) {
-        wchar_t expanded[MAX_PATH];
-        if (ExpandEnvironmentStringsW(c, expanded, MAX_PATH) == 0) continue;
-        if (fs::exists(expanded, ec)) return expanded;
+    STARTUPINFOW si{}; si.cb = sizeof(si);
+    si.dwFlags     = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    si.hStdInput   = rd;
+
+    std::vector<wchar_t> cl(cmdline.begin(), cmdline.end());
+    cl.push_back(L'\0');
+
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessW(nullptr, cl.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
+                             nullptr, cwd.empty() ? nullptr : cwd.c_str(), &si, &pi);
+    CloseHandle(rd);
+    if (!ok) { CloseHandle(wr); return false; }
+
+    DWORD written = 0;
+    WriteFile(wr, input.data(), (DWORD)input.size(), &written, nullptr);
+    CloseHandle(wr);
+    WaitForSingleObject(pi.hProcess, 10000);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return true;
+}
+
+// ---------- GitHub (OAuth Device Flow + REST) ----------
+// gh CLI 에 기대지 않는다 — 앱이 직접 브라우저 인증을 진행하고 REST 로 저장소를 다룬다.
+// Device Flow 는 client_secret 이 필요 없어 client_id 를 앱에 넣어도 안전하다(공개 정보).
+static const char* kOAuthClientId = "Ov23liJWwSRV0A7hyy0H";
+
+// WinHTTP 로 JSON 요청 한 번. 반환값은 HTTP 상태코드(0 = 연결 자체 실패).
+static DWORD HttpJson(const wchar_t* verb, const wchar_t* host, const std::wstring& path,
+                      const std::string& body, const std::string& bearer, std::string& out) {
+    out.clear();
+    HINTERNET ses = WinHttpOpen(L"ClaudeCodeStudio", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!ses) return 0;
+
+    DWORD status = 0;
+    if (HINTERNET con = WinHttpConnect(ses, host, INTERNET_DEFAULT_HTTPS_PORT, 0)) {
+        HINTERNET req = WinHttpOpenRequest(con, verb, path.c_str(), nullptr, WINHTTP_NO_REFERER,
+                                           WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+        if (req) {
+            // Accept: application/json 이 없으면 OAuth 엔드포인트가 form-encoded 로 답한다.
+            std::wstring headers = L"Accept: application/json\r\nContent-Type: application/json\r\n";
+            if (!bearer.empty()) headers += L"Authorization: Bearer " + Widen(bearer) + L"\r\n";
+
+            BOOL sent = WinHttpSendRequest(req, headers.c_str(), (DWORD)-1,
+                                           body.empty() ? WINHTTP_NO_REQUEST_DATA : (LPVOID)body.data(),
+                                           (DWORD)body.size(), (DWORD)body.size(), 0);
+            if (sent && WinHttpReceiveResponse(req, nullptr)) {
+                DWORD sz = sizeof(status);
+                WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                                    WINHTTP_HEADER_NAME_BY_INDEX, &status, &sz, WINHTTP_NO_HEADER_INDEX);
+                DWORD avail = 0;
+                while (WinHttpQueryDataAvailable(req, &avail) && avail > 0) {
+                    std::string chunk(avail, '\0');
+                    DWORD read = 0;
+                    if (!WinHttpReadData(req, chunk.data(), avail, &read)) break;
+                    out.append(chunk.data(), read);
+                }
+            }
+            WinHttpCloseHandle(req);
+        }
+        WinHttpCloseHandle(con);
     }
-    return L"";
+    WinHttpCloseHandle(ses);
+    return status;
 }
 
-// GitHub CLI. 미설치면 (DWORD)-1 이 돌아온다 — 로그인 실패(exit != 0)와 구분된다.
-static DWORD Gh(const std::wstring& args, std::string& out) {
-    std::wstring exe = GhExePath();
-    if (exe.empty()) { out.clear(); return (DWORD)-1; }
-    return RunCapture(L"\"" + exe + L"\" " + args, g_repoDir, out);
+// 토큰 파일. 앱 상태 폴더를 따르므로 CCSTUDIO_STATE_DIR 을 쓰는 검증 실행은 자동으로 격리된다.
+static fs::path TokenPath() {
+    std::wstring dir = EnvVar(L"CCSTUDIO_STATE_DIR");
+    if (dir.empty()) dir = EnvVar(L"LOCALAPPDATA") + L"\\ClaudeCodeStudio";
+    return fs::path(dir) / L"github_token.bin";
 }
+
+// DPAPI 로 이 사용자 계정에서만 풀리게 암호화해 둔다 — 평문으로 두지 않는다.
+static bool SaveToken(const std::string& token) {
+    DATA_BLOB in{ (DWORD)token.size(), (BYTE*)token.data() }, enc{};
+    if (!CryptProtectData(&in, L"ClaudeCodeStudio GitHub token", nullptr, nullptr, nullptr, 0, &enc))
+        return false;
+    std::error_code ec;
+    fs::create_directories(TokenPath().parent_path(), ec);
+    std::ofstream f(TokenPath(), std::ios::binary | std::ios::trunc);
+    bool ok = false;
+    if (f) { f.write((const char*)enc.pbData, enc.cbData); ok = f.good(); }
+    LocalFree(enc.pbData);
+    return ok;
+}
+
+static std::string LoadToken() {
+    std::ifstream f(TokenPath(), std::ios::binary);
+    if (!f) return "";
+    std::string raw((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    if (raw.empty()) return "";
+    DATA_BLOB in{ (DWORD)raw.size(), (BYTE*)raw.data() }, dec{};
+    if (!CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, 0, &dec)) return "";
+    std::string token((const char*)dec.pbData, dec.cbData);
+    LocalFree(dec.pbData);
+    return token;
+}
+
+// 토큰을 git 자격증명 저장소에 넣는다. 이게 없으면 저장소는 만들어져도 첫 push 에서 막힌다.
+static void StoreGitCredential(const std::string& user, const std::string& token) {
+    std::string input = "protocol=https\nhost=github.com\nusername=" + user +
+                        "\npassword=" + token + "\n\n";
+    RunWithInput(L"git credential approve", g_repoDir, input);
+}
+
 
 // 인스톨러가 남긴 값 읽기 (HKCU\Software\ClaudeCodeStudio). 없으면 빈 문자열.
 static std::string RegRead(const wchar_t* name) {
@@ -229,6 +321,14 @@ static void Result(bool ok, const std::string& msg, const std::string& detail) {
     j += ok ? "true" : "false";
     j += ",\"message\":\"" + JsonEsc(msg) + "\",\"detail\":\"" + JsonEsc(detail) + "\"}";
     PostToWeb(j);
+}
+
+// 저장된 토큰으로 로그인 계정을 확인한다. 유효하지 않으면 빈 문자열.
+static std::string AccountFromToken(const std::string& token) {
+    if (token.empty()) return "";
+    std::string body;
+    if (HttpJson(L"GET", L"api.github.com", L"/user", "", token, body) != 200) return "";
+    return JsonGet(body, "login");
 }
 
 // git 워킹트리(= 설정 완료) 여부.
@@ -468,95 +568,76 @@ static void CmdBootstrap(const std::string& url) {
     CmdLog();
 }
 
-// 초기 설정 화면이 쓸 환경 정보: gh 설치/로그인 여부, 로그인 계정, 인스톨러가 남긴 저장소 URL.
+// 초기 설정 화면이 쓸 정보: 로그인 여부와 계정, 인스톨러가 남긴 저장소 URL.
 static void CmdGhInfo() {
-    std::string out;
-    DWORD code = Gh(L"api user --jq .login", out);
-    bool installed = (code != (DWORD)-1);
-    std::string account = Trim(out);
-    bool loggedIn = installed && code == 0 && !account.empty();
+    std::string account = AccountFromToken(LoadToken());
 
     // repoDir 을 오버라이드한 검증 실행에서는 이 PC 의 설치 흔적을 끌어오지 않는다.
     std::string suggested = EnvVar(L"CCSTUDIO_CLAUDE_DIR").empty() ? RegRead(L"RepoUrl") : "";
 
-    std::string j = "{\"type\":\"gh\",\"installed\":";
-    j += installed ? "true" : "false";
-    j += ",\"loggedIn\":";
-    j += loggedIn ? "true" : "false";
-    j += ",\"account\":\"" + JsonEsc(loggedIn ? account : "") + "\"";
+    std::string j = "{\"type\":\"gh\",\"loggedIn\":";
+    j += account.empty() ? "false" : "true";
+    j += ",\"account\":\"" + JsonEsc(account) + "\"";
     j += ",\"suggestedRepo\":\"" + JsonEsc(suggested) + "\"}";
     PostToWeb(j);
 }
 
-// gh 출력에서 일회용 코드를 뽑는다. 형식: "! First copy your one-time code: 292E-8B02"
-static std::string ExtractDeviceCode(const std::string& s) {
-    const std::string key = "one-time code:";
-    size_t p = s.find(key);
-    if (p == std::string::npos) return "";
-    p += key.size();
-    while (p < s.size() && (s[p] == ' ' || s[p] == '\t')) ++p;
-    std::string code;
-    while (p < s.size() && (std::isalnum((unsigned char)s[p]) || s[p] == '-')) code += s[p++];
-    return code;
-}
+// 승인을 기다리는 Device Flow 상태. 폴링은 웹이 주기적으로 ghPoll 을 보내 진행한다.
+static std::string g_deviceCode;
 
-// gh 로그인을 시작하고, 일회용 코드가 나오는 즉시 브라우저를 열어 준 뒤 돌아온다.
-// 호스트/프로토콜/SSH 프롬프트는 플래그로 미리 채워 대화형 입력이 없다 — 사용자는
-// 터미널을 볼 일 없이 앱에 뜬 코드를 브라우저에 넣기만 하면 된다.
-// gh 프로세스는 남겨 둔다: 승인되면 스스로 끝난다. 종료를 기다리면 창이 멈추고,
-// 워커 스레드에서는 UI 로 회신할 수 없다(WebView2 는 UI 스레드 전용).
+// 브라우저 인증을 시작한다. 일회용 코드를 화면에 띄우고 브라우저를 연 뒤 곧바로 돌아온다.
+// 승인될 때까지 여기서 기다리면 창이 멈추므로, 확인은 ghPoll 이 나눠 맡는다.
 static void CmdGhLogin() {
-    std::wstring ghExe = GhExePath();
-    if (ghExe.empty()) {
-        Result(false, "gh CLI 를 찾지 못했습니다", "GitHub CLI 설치 후 다시 시도하세요");
+    std::string body = std::string("{\"client_id\":\"") + kOAuthClientId + "\",\"scope\":\"repo\"}";
+    std::string resp;
+    DWORD st = HttpJson(L"POST", L"github.com", L"/login/device/code", body, "", resp);
+    if (st != 200) {
+        Result(false, "GitHub 에 연결하지 못했습니다", "네트워크를 확인하세요 (HTTP " + std::to_string(st) + ")");
         return;
     }
 
-    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
-    HANDLE rd = nullptr, wr = nullptr;
-    if (!CreatePipe(&rd, &wr, &sa, 0)) { Result(false, "로그인을 시작하지 못했습니다", ""); return; }
-    SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
-
-    STARTUPINFOW si{}; si.cb = sizeof(si);
-    si.dwFlags     = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-    si.hStdOutput  = wr;
-    si.hStdError   = wr;
-
-    std::wstring cmd = L"\"" + ghExe + L"\" auth login"
-                       L" --hostname github.com --git-protocol https --skip-ssh-key";
-    std::vector<wchar_t> cl(cmd.begin(), cmd.end());
-    cl.push_back(L'\0');
-
-    PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessW(nullptr, cl.data(), nullptr, nullptr, TRUE,
-                             CREATE_NO_WINDOW, nullptr,
-                             g_repoDir.empty() ? nullptr : g_repoDir.c_str(), &si, &pi);
-    CloseHandle(wr);
-    if (!ok) {
-        CloseHandle(rd);
-        Result(false, "gh 를 실행하지 못했습니다", "설치와 PATH 를 확인하세요");
+    g_deviceCode = JsonGet(resp, "device_code");
+    std::string userCode = JsonGet(resp, "user_code");
+    std::string uri      = JsonGet(resp, "verification_uri");
+    if (g_deviceCode.empty() || userCode.empty()) {
+        Result(false, "로그인 코드를 받지 못했습니다", Trim(resp).substr(0, 200));
         return;
     }
+    if (uri.empty()) uri = "https://github.com/login/device";
 
-    std::string out, code;
-    char buf[1024]; DWORD read = 0;
-    while (code.empty() && ReadFile(rd, buf, sizeof(buf), &read, nullptr) && read > 0) {
-        out.append(buf, read);
-        code = ExtractDeviceCode(out);
-    }
-    CloseHandle(rd);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);   // 프로세스는 계속 돌게 두고 핸들만 놓는다
-
-    if (code.empty()) { Result(false, "로그인 코드를 받지 못했습니다", Trim(out)); return; }
-
-    ShellExecuteW(nullptr, L"open", L"https://github.com/login/device",
-                  nullptr, nullptr, SW_SHOWNORMAL);
-    PostToWeb("{\"type\":\"ghLogin\",\"code\":\"" + JsonEsc(code) + "\"}");
+    ShellExecuteW(nullptr, L"open", Widen(uri).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    PostToWeb("{\"type\":\"ghLogin\",\"code\":\"" + JsonEsc(userCode) + "\"}");
 }
 
-// GitHub 저장소를 준비하고(없으면 생성) 그 URL 로 초기 설정까지 이어서 수행한다.
+// 승인됐는지 한 번만 확인한다. 아직이면 조용히 넘어간다 — 웹이 다시 부른다.
+static void CmdGhPoll() {
+    if (g_deviceCode.empty()) { CmdGhInfo(); return; }
+
+    std::string body = std::string("{\"client_id\":\"") + kOAuthClientId +
+                       "\",\"device_code\":\"" + g_deviceCode +
+                       "\",\"grant_type\":\"urn:ietf:params:oauth:grant-type:device_code\"}";
+    std::string resp;
+    if (HttpJson(L"POST", L"github.com", L"/login/oauth/access_token", body, "", resp) != 200) return;
+
+    std::string token = JsonGet(resp, "access_token");
+    if (token.empty()) {
+        // authorization_pending / slow_down 은 정상 흐름이라 그냥 다음 폴링을 기다린다.
+        std::string err = JsonGet(resp, "error");
+        if (err == "expired_token" || err == "access_denied") {
+            g_deviceCode.clear();
+            Result(false, "로그인이 완료되지 않았습니다", err);
+        }
+        return;
+    }
+
+    g_deviceCode.clear();
+    SaveToken(token);
+    std::string account = AccountFromToken(token);
+    if (!account.empty()) StoreGitCredential(account, token);   // push 가 바로 되게
+    CmdGhInfo();
+}
+
+// 저장소를 준비하고(없으면 생성) 그 URL 로 초기 설정까지 이어서 수행한다.
 // 이미 있는 저장소면 만들지 않고 그대로 연결한다 — 두 번째 PC 에서 같은 화면을 쓰는 경우.
 static void CmdCreateRepo(const std::string& req) {
     std::string owner = Trim(JsonGet(req, "owner"));
@@ -564,15 +645,21 @@ static void CmdCreateRepo(const std::string& req) {
     bool isPrivate = JsonGet(req, "private") != "false";
     if (owner.empty() || name.empty()) { Result(false, "계정명과 저장소 이름이 필요합니다", ""); return; }
 
-    std::string slug = owner + "/" + name, out;
-    if (Gh(L"repo view " + Widen(QuoteArg(slug)), out) != 0) {
-        std::wstring vis = isPrivate ? L" --private" : L" --public";
-        if (Gh(L"repo create " + Widen(QuoteArg(slug)) + vis, out) != 0) {
-            Result(false, "저장소 생성 실패 (gh 로그인/권한 확인)", Trim(out));
+    std::string token = LoadToken();
+    if (token.empty()) { Result(false, "먼저 GitHub 로그인이 필요합니다", ""); return; }
+
+    std::string resp;
+    std::wstring path = L"/repos/" + Widen(owner) + L"/" + Widen(name);
+    if (HttpJson(L"GET", L"api.github.com", path, "", token, resp) != 200) {
+        std::string body = "{\"name\":\"" + JsonEsc(name) + "\",\"private\":" +
+                           (isPrivate ? "true" : "false") + "}";
+        DWORD st = HttpJson(L"POST", L"api.github.com", L"/user/repos", body, token, resp);
+        if (st != 201) {
+            Result(false, "저장소 생성 실패", "HTTP " + std::to_string(st) + " " + Trim(resp).substr(0, 200));
             return;
         }
     }
-    CmdBootstrap("https://github.com/" + slug + ".git");
+    CmdBootstrap("https://github.com/" + owner + "/" + name + ".git");
 }
 
 // 셸 설정 탭 값 수신. 응답 없음 — 이후 명령부터 반영된다.
@@ -608,6 +695,7 @@ MODULE_API void Module_Handle(const char* reqJson) {
     else if (cmd == "bootstrap") CmdBootstrap(arg);
     else if (cmd == "ghInfo")    CmdGhInfo();
     else if (cmd == "ghLogin")   CmdGhLogin();
+    else if (cmd == "ghPoll")    CmdGhPoll();
     else if (cmd == "createRepo") CmdCreateRepo(req);
     else                         Result(false, "알 수 없는 명령", cmd);
 }
