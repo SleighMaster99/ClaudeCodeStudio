@@ -45,9 +45,10 @@ public sealed class CcsApp : IDisposable
     /// <param name="statusbarRoot">StatusBar 모듈 루트(config.json 기록 위치) 오버라이드. 정리는 호출자 몫.</param>
     /// <param name="settingsPath">settings.json 경로 오버라이드 (statusLine 적용 검증). 정리는 호출자 몫.</param>
     /// <param name="ghConfigDir">gh 설정 폴더 오버라이드. 빈 폴더를 주면 이 PC 의 로그인과 무관하게 '미로그인' 으로 보인다.</param>
+    /// <param name="pathOverride">앱이 볼 PATH 를 통째로 교체 (도구를 PATH 없이 찾아내는지 확인할 때).</param>
     public static CcsApp Launch(bool unconfigured = false, string? stateDir = null,
                                 string? claudeDir = null, string? statusbarRoot = null, string? settingsPath = null,
-                                string? ghConfigDir = null)
+                                string? ghConfigDir = null, string? pathOverride = null)
     {
         int port = FreePort();
         var psi = new ProcessStartInfo(ExePath) { UseShellExecute = false };
@@ -62,6 +63,7 @@ public sealed class CcsApp : IDisposable
         if (statusbarRoot != null) psi.EnvironmentVariables["CCSTUDIO_STATUSBAR_ROOT"] = statusbarRoot;
         if (settingsPath != null) psi.EnvironmentVariables["CCSTUDIO_SETTINGS_PATH"] = settingsPath;
         if (ghConfigDir != null) psi.EnvironmentVariables["GH_CONFIG_DIR"] = ghConfigDir;
+        if (pathOverride != null) psi.EnvironmentVariables["PATH"] = pathOverride;
 
         string? tmp = null;
         if (claudeDir != null)

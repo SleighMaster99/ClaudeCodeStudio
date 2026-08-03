@@ -97,9 +97,34 @@ static DWORD RunCapture(const std::wstring& cmdline, const std::wstring& cwd, st
 static DWORD Git(const std::wstring& args, std::string& out) {
     return RunCapture(L"git " + args, g_repoDir, out);
 }
-// GitHub CLI. 미설치면 CreateProcess 자체가 실패해 (DWORD)-1 이 돌아온다 — 로그인 실패(exit 1)와 구분된다.
+// gh.exe 전체 경로. PATH 를 먼저 보고, 없으면 표준 설치 위치를 직접 확인한다.
+// winget/msi 로 막 설치한 세션은 PATH 가 아직 갱신되지 않아 이름만으로는 찾지 못한다.
+// 못 찾으면 빈 문자열 — 호출부가 '미설치' 로 다룬다.
+static std::wstring GhExePath() {
+    wchar_t found[MAX_PATH];
+    if (SearchPathW(nullptr, L"gh.exe", nullptr, MAX_PATH, found, nullptr) > 0) return found;
+
+    const wchar_t* candidates[] = {
+        L"%ProgramFiles%\\GitHub CLI\\gh.exe",
+        L"%ProgramW6432%\\GitHub CLI\\gh.exe",
+        L"%ProgramFiles(x86)%\\GitHub CLI\\gh.exe",
+        L"%LOCALAPPDATA%\\Programs\\GitHub CLI\\gh.exe",
+        L"%LOCALAPPDATA%\\Microsoft\\WinGet\\Links\\gh.exe",
+    };
+    std::error_code ec;
+    for (const wchar_t* c : candidates) {
+        wchar_t expanded[MAX_PATH];
+        if (ExpandEnvironmentStringsW(c, expanded, MAX_PATH) == 0) continue;
+        if (fs::exists(expanded, ec)) return expanded;
+    }
+    return L"";
+}
+
+// GitHub CLI. 미설치면 (DWORD)-1 이 돌아온다 — 로그인 실패(exit != 0)와 구분된다.
 static DWORD Gh(const std::wstring& args, std::string& out) {
-    return RunCapture(L"gh " + args, g_repoDir, out);
+    std::wstring exe = GhExePath();
+    if (exe.empty()) { out.clear(); return (DWORD)-1; }
+    return RunCapture(L"\"" + exe + L"\" " + args, g_repoDir, out);
 }
 
 // 인스톨러가 남긴 값 읽기 (HKCU\Software\ClaudeCodeStudio). 없으면 빈 문자열.
@@ -481,6 +506,12 @@ static std::string ExtractDeviceCode(const std::string& s) {
 // gh 프로세스는 남겨 둔다: 승인되면 스스로 끝난다. 종료를 기다리면 창이 멈추고,
 // 워커 스레드에서는 UI 로 회신할 수 없다(WebView2 는 UI 스레드 전용).
 static void CmdGhLogin() {
+    std::wstring ghExe = GhExePath();
+    if (ghExe.empty()) {
+        Result(false, "gh CLI 를 찾지 못했습니다", "GitHub CLI 설치 후 다시 시도하세요");
+        return;
+    }
+
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE rd = nullptr, wr = nullptr;
     if (!CreatePipe(&rd, &wr, &sa, 0)) { Result(false, "로그인을 시작하지 못했습니다", ""); return; }
@@ -492,7 +523,8 @@ static void CmdGhLogin() {
     si.hStdOutput  = wr;
     si.hStdError   = wr;
 
-    std::wstring cmd = L"gh auth login --hostname github.com --git-protocol https --skip-ssh-key";
+    std::wstring cmd = L"\"" + ghExe + L"\" auth login"
+                       L" --hostname github.com --git-protocol https --skip-ssh-key";
     std::vector<wchar_t> cl(cmd.begin(), cmd.end());
     cl.push_back(L'\0');
 

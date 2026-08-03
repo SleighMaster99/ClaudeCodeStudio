@@ -133,6 +133,28 @@ public class Scenarios
         Assert.IsTrue(switched, "'새로 만들기' 선택 시 저장소 이름이 열리고 URL 입력은 닫힌다");
     }
 
+    // winget/msi 로 gh 를 막 설치한 세션은 PATH 가 아직 갱신되지 않아 이름만으로는 찾지 못한다.
+    // PATH 에서 GitHub CLI 를 빼고도 표준 설치 경로로 찾아내는지 확인한다.
+    [TestMethod]
+    public void 초기설정_PATH_에_gh_가_없어도_찾아낸다()
+    {
+        string full = Environment.GetEnvironmentVariable("PATH") ?? "";
+        string pruned = string.Join(';',
+            full.Split(';').Where(p => p.IndexOf("GitHub CLI", StringComparison.OrdinalIgnoreCase) < 0));
+        Assert.AreNotEqual(full, pruned, "이 PC 의 PATH 에 GitHub CLI 항목이 있어야 의미 있는 검증이 된다");
+
+        using var app = CcsApp.Launch(unconfigured: true, pathOverride: pruned);
+        app.SwitchToModule("sync");
+        app.WaitForSelector("#repoUrl", 10000);
+
+        string state = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghState")).Text; } catch { return ""; } },
+            s => s.Length > 0 && !s.Contains("확인 중"), 20000);
+
+        StringAssert.Contains(state, "✓", $"PATH 에 없어도 gh 를 찾아 계정을 읽는다 (실제: '{state}')");
+        Assert.IsTrue(app.Driver.FindElement(By.Id("modeNew")).Enabled, "'새로 만들기' 갈래가 열린다");
+    }
+
     // gh 설정 폴더를 빈 임시 폴더로 돌려 '미로그인' 을 만든다 — 이 PC 의 실제 로그인은 건드리지 않는다.
     // 버튼을 누르면 진짜 gh 가 device flow 를 시작하므로, 코드가 화면에 뜨는 것까지 확인할 수 있다.
     [TestMethod]

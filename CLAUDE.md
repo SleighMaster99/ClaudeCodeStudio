@@ -92,6 +92,9 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
   (`gh api user --jq .login` 으로 계정 확인 → `gh repo view` 로 존재 확인 → 없으면 `gh repo create`).
   gh 미설치면 이 갈래는 잠긴다.
 
+`gh.exe` 는 **PATH 를 먼저 보고, 없으면 표준 설치 경로**(`%ProgramFiles%\GitHub CLI`, winget Links 등)를 직접 확인한다.
+winget/msi 로 막 설치한 세션은 PATH 가 아직 갱신되지 않아 이름만으로는 못 찾기 때문이다.
+
 **gh 로그인은 앱 안에서 한다** — 터미널을 열 일이 없다. 설치돼 있는데 로그인 전이면 **[GitHub 로그인]** 버튼이 뜨고,
 `ghLogin` 이 `gh auth login --hostname github.com --git-protocol https --skip-ssh-key` 를 파이프로 띄운다.
 플래그로 프롬프트를 미리 채워 대화형 입력이 없고, 일회용 코드가 나오는 즉시 브라우저를 열고 코드를 화면에 띄운다.
