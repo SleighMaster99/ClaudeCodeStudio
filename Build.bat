@@ -122,6 +122,12 @@ echo [2/5] MSBuild  Release^|x64
 rem ===========================================================================
 if defined SKIPBUILD goto :build_skipped
 
+rem A running app holds Core.dll and the module DLLs open, so the link step dies
+rem with LNK1104 - several minutes in, with an error that does not name the cause.
+rem Catch it before the build starts.
+tasklist /FI "IMAGENAME eq ClaudeCodeStudio.exe" /NH 2>nul | findstr /i "ClaudeCodeStudio.exe" >nul
+if not errorlevel 1 goto :apprunning
+
 if not exist "%WV2%\include\WebView2.h" goto :nowv2
 if not exist "%VSWHERE%" goto :novswhere
 
@@ -217,6 +223,12 @@ exit /b 1
 
 :badlatest
 echo [ERROR] "%VERFILE%" does not hold a MAJOR.MINOR.PATCH value: "!LATEST!"
+exit /b 1
+
+:apprunning
+echo [ERROR] ClaudeCodeStudio.exe is running.
+echo         Close the app and run again - a loaded module DLL cannot be
+echo         overwritten, and the link step would fail with LNK1104.
 exit /b 1
 
 :nowv2
