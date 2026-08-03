@@ -157,6 +157,7 @@ body {
 /* status bar */
 .statusbar { display:flex; align-items:center; gap:8px; padding:9px 14px; border-top:1px solid var(--line);
   background:var(--win); font-family:var(--font-mono); font-size:0.6875rem; color:var(--ink3); flex:none; }
+.statusbar[hidden] { display:none; }   /* [hidden] 이 display:flex 에 지지 않도록 */
 .conn { display:flex; align-items:center; gap:6px; color:var(--good); }
 .conn.off { color:var(--ink3); }
 .conn-dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
@@ -205,13 +206,62 @@ button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .setup-mark { font-size:2.125rem; color:var(--accent); margin-bottom:6px; }
 .setup-title { font-family:var(--font-mono); font-size:1.25rem; font-weight:600; margin:0 0 8px; }
 .setup-desc { font-size:0.8125rem; color:var(--ink2); margin:0 0 20px; }
-.setup-label { display:block; text-align:left; font-size:0.65625rem; color:var(--ink3);
-  margin-bottom:5px; text-transform:uppercase; letter-spacing:.5px; }
+/* 초기 설정 방식 선택 — 라디오 한 줄 + 그 아래 펼쳐지는 입력 영역 */
+.setup-mode { display:flex; align-items:center; gap:8px; text-align:left; cursor:pointer;
+  padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:var(--s2); }
+.setup-mode:has(input:checked) { border-color:var(--accent); background:var(--win); }
+.setup-mode:has(input:disabled) { opacity:.55; cursor:default; }
+.setup-mode + .setup-mode { margin-top:8px; }
+.setup-mode-name { font-size:0.8125rem; color:var(--ink); }
+.setup-mode-state { margin-left:auto; font-family:var(--font-mono); font-size:0.65625rem; color:var(--ink3); }
+.setup-pane { padding:10px 0 2px; text-align:left; }
+.setup-pane[hidden] { display:none; }
+.setup-check { display:flex; align-items:center; gap:7px; font-size:0.75rem; color:var(--ink2); cursor:pointer; }
+/* GitHub 로그인 — 터미널 없이 앱에서 시작한다 */
+.setup-login { margin-top:10px; }
+.setup-login[hidden] { display:none; }
+.setup-login-go { width:100%; padding:9px; font-family:var(--font-mono); font-size:0.78rem;
+  border:1px solid var(--line2); border-radius:8px; background:var(--win); color:var(--ink2); cursor:pointer; }
+.setup-login-go:hover:not([disabled]) { border-color:var(--accent); color:var(--accent); }
+.setup-login-go[disabled] { opacity:.6; cursor:default; }
+
+/* 승인 대기 화면 — 설정 박스를 덮지 않고 같은 자리에서 내용만 바뀐다 */
+#setupLogin[hidden], #setupMain[hidden] { display:none; }
+.login-code { border:1px solid var(--accent); border-radius:10px; background:var(--s2);
+  padding:14px 12px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.login-code-val { font-family:var(--font-mono); font-size:1.625rem; font-weight:600;
+  letter-spacing:.14em; color:var(--accent); line-height:1.2; }
+.login-copy { font-family:var(--font-mono); font-size:0.65625rem; padding:4px 10px;
+  border:1px solid var(--line2); border-radius:6px; background:var(--win); color:var(--ink2); cursor:pointer; }
+.login-copy:hover { border-color:var(--accent); color:var(--accent); }
+.login-steps { list-style:none; margin:16px 0 0; padding:0; text-align:left;
+  display:flex; flex-direction:column; gap:9px; }
+.login-step { display:grid; grid-template-columns:19px 1fr; gap:9px; align-items:start;
+  font-size:0.73125rem; color:var(--ink2); }
+.login-dot { width:18px; height:18px; border-radius:50%; display:flex; align-items:center;
+  justify-content:center; font-family:var(--font-mono); font-size:0.625rem; font-weight:600;
+  border:1px solid var(--line2); background:var(--win); color:var(--ink3); }
+.login-step.done .login-dot { background:var(--good); border-color:var(--good); color:var(--win); }
+.login-step.done span:last-child { color:var(--ink3); }
+.login-step.now .login-dot { background:var(--accent-soft, var(--s3)); border-color:var(--accent); color:var(--accent); }
+.login-step.now span:last-child { color:var(--ink); font-weight:600; }
+.login-wait { display:flex; align-items:center; justify-content:center; gap:8px;
+  margin-top:14px; font-size:0.6875rem; color:var(--ink2); }
+.login-wait[hidden] { display:none; }
+.login-spin { width:15px; height:15px; border-radius:50%; flex:none;
+  border:2px solid var(--line2); border-top-color:var(--accent); animation:login-sp .8s linear infinite; }
+@keyframes login-sp { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .login-spin { animation:none; } }
+.login-ended { margin:14px 0 0; font-size:0.71875rem; color:var(--crit); }
+.login-ended[hidden] { display:none; }
+.login-back { width:100%; margin-top:8px; padding:9px; font-family:var(--font-mono); font-size:0.75rem;
+  border:1px solid var(--line2); border-radius:8px; background:var(--win); color:var(--ink2); cursor:pointer; }
+.login-back:hover { border-color:var(--accent); color:var(--accent); }
 .setup-input { width:100%; padding:9px 11px; font-family:var(--font-mono); font-size:0.75rem;
-  border:1px solid var(--line2); border-radius:8px; background:var(--win); color:var(--ink); margin-bottom:14px; }
+  border:1px solid var(--line2); border-radius:8px; background:var(--win); color:var(--ink); margin-bottom:10px; }
 .setup-input:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
-.setup-go { width:100%; padding:11px; font-family:var(--font-mono); font-size:0.875rem; font-weight:600;
-  border:0; border-radius:8px; background:var(--accent); color:var(--on-accent); cursor:pointer; }
+.setup-go { width:100%; margin-top:14px; padding:11px; font-family:var(--font-mono); font-size:0.875rem;
+  font-weight:600; border:0; border-radius:8px; background:var(--accent); color:var(--on-accent); cursor:pointer; }
 .setup-go:hover:not([disabled]) { background:var(--accent2); }
 .setup-go[disabled] { opacity:.6; cursor:default; }
 .setup-note { font-size:0.6875rem; color:var(--ink3); margin:12px 0 0; }

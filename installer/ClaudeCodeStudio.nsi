@@ -41,15 +41,68 @@ VIAddVersionKey "LegalCopyright"  "Copyright (C) ${COMPANY}"
 VIAddVersionKey "FileDescription" "${APPDISPLAY} Setup"
 
 !include "MUI2.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
 !define MUI_ABORTWARNING
 ; Setup / 언인스톨러 아이콘 — 저장소 로고 자산을 컴파일 타임에 임베드 (경로는 이 스크립트 기준)
 !define MUI_ICON   "${__FILEDIR__}\..\assets\logo\logo.ico"
 !define MUI_UNICON "${__FILEDIR__}\..\assets\logo\logo.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APPKEY}.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "지금 실행"
+; 바탕화면 바로가기는 설치가 끝난 뒤 마지막 화면에서 고르게 한다.
+; SHOWREADME 는 원래 파일을 여는 용도지만, 경로를 비우면 체크박스와 콜백만 남는다.
+!define MUI_FINISHPAGE_SHOWREADME ""
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "바탕화면에 바로가기 만들기"
+!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
+
+; ----- 설치 옵션 페이지 (nsDialogs) -----
+; 서버 저장소 주소를 미리 받아 두면 앱 첫 실행 때 초기 설정 화면에 채워진다.
+; 비워 두고 넘어가도 된다 — 그때는 앱에서 직접 입력하거나 GitHub 계정에 새로 만든다.
+Var Dialog
+Var RepoUrlText
+Var RepoUrl        ; 입력값 (빈 값 = 건너뜀)
+
+Function OptionsPageCreate
+  !insertmacro MUI_HEADER_TEXT "설치 옵션" "설정을 보관할 서버 저장소를 지정합니다."
+  nsDialogs::Create 1018
+  Pop $Dialog
+  ${If} $Dialog == error
+    Abort
+  ${EndIf}
+
+  ${NSD_CreateLabel} 0 0 100% 26u "Claude Code 설정을 보관할 서버 저장소 주소입니다. 이미 만들어 둔 저장소여야 합니다.$\r$\n지금 비워 두면 앱을 처음 실행할 때 입력하거나 GitHub 계정에 새로 만들 수 있습니다."
+  Pop $0
+
+  ${NSD_CreateLabel} 0 32u 100% 11u "저장소 URL (선택)"
+  Pop $0
+
+  ${NSD_CreateText} 0 44u 100% 13u "$RepoUrl"
+  Pop $RepoUrlText
+  ${NSD_SetTextLimit} $RepoUrlText 500
+
+  ${NSD_CreateLabel} 0 60u 100% 11u "예: https://github.com/OWNER/REPO.git"
+  Pop $0
+
+  nsDialogs::Show
+FunctionEnd
+
+Function OptionsPageLeave
+  ${NSD_GetText} $RepoUrlText $RepoUrl
+FunctionEnd
+
+; 재설치라면 이전에 넣은 주소를 다시 보여준다.
+Function .onInit
+  ReadRegStr $RepoUrl HKCU "Software\${APPKEY}" "RepoUrl"
+FunctionEnd
+
+; 마지막 화면의 '바탕화면에 바로가기 만들기' 체크박스가 부른다.
+Function CreateDesktopShortcut
+  CreateShortcut "$DESKTOP\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
+FunctionEnd
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
+Page custom OptionsPageCreate OptionsPageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -84,10 +137,14 @@ Section "Install"
   ; ----- 바로가기 -----
   CreateDirectory "$SMPROGRAMS\${APPDISPLAY}"
   CreateShortcut "$SMPROGRAMS\${APPDISPLAY}\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
-  CreateShortcut "$DESKTOP\${APPDISPLAY}.lnk" "$INSTDIR\${APPKEY}.exe"
+  ; 바탕화면 바로가기는 마지막 화면의 체크박스가 만든다 (CreateDesktopShortcut).
 
   ; ----- 등록 + uninstaller -----
   WriteRegStr HKCU "Software\${APPKEY}" "InstallDir" "$INSTDIR"
+  ; 앱의 초기 설정 화면이 이 값을 저장소 URL 로 미리 채운다 (비었으면 기록하지 않는다).
+  ${If} $RepoUrl != ""
+    WriteRegStr HKCU "Software\${APPKEY}" "RepoUrl" "$RepoUrl"
+  ${EndIf}
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   !define UNINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPKEY}"

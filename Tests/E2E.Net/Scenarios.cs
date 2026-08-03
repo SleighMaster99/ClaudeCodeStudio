@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Interactions;
 
@@ -93,6 +94,64 @@ public class Scenarios
             () => (string)app.Js.ExecuteScript("return document.documentElement.getAttribute('data-theme')||'';"),
             v => v == "dark", 3000);
         Assert.AreEqual("dark", frameTheme, "sync 모듈 iframe 에 data-theme=dark 적용");
+    }
+
+    [TestMethod]
+    public void 초기설정_저장소URL_빈칸으로_시작()
+    {
+        using var app = CcsApp.Launch(unconfigured: true);
+        app.SwitchToModule("sync");
+
+        var input = app.WaitForSelector("#repoUrl", 10000);
+        CcsApp.WaitUntil(() => { try { return input.Displayed; } catch { return false; } }, v => v, 8000);
+
+        Assert.AreEqual("", input.GetAttribute("value") ?? "", "저장소 URL 은 미리 채워지지 않는다");
+        Assert.AreNotEqual("", input.GetAttribute("placeholder") ?? "", "입력 형식은 placeholder 로 안내한다");
+    }
+
+    // 토큰은 앱 상태 폴더에 있고 E2E 는 그 폴더를 매번 임시로 격리하므로, 테스트는 항상 미로그인으로 뜬다.
+    // 버튼을 누르면 실제 GitHub device flow 가 시작되므로 코드가 화면에 뜨는 것까지 확인할 수 있다.
+    [TestMethod]
+    public void 초기설정_미로그인이면_로그인_버튼으로_인증을_시작한다()
+    {
+        using var app = CcsApp.Launch(unconfigured: true);
+        app.SwitchToModule("sync");
+        app.WaitForSelector("#repoUrl", 10000);
+
+        bool shown = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghLoginBtn")).Displayed; } catch { return false; } },
+            v => v, 20000);
+        Assert.IsTrue(shown, "미로그인이면 [GitHub 로그인] 버튼이 열린다");
+        Assert.IsFalse(app.Driver.FindElement(By.Id("modeNew")).Enabled, "'새로 만들기' 갈래는 잠긴다");
+        StringAssert.Contains(app.Driver.FindElement(By.Id("ghState")).Text, "로그인 필요",
+            "상태 문구가 무엇을 해야 하는지 알려준다");
+
+        app.Driver.FindElement(By.Id("ghLoginBtn")).Click();
+        string code = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghCode")).Text; } catch { return ""; } },
+            s => s.Length > 0 && s != "—", 40000);
+        StringAssert.Matches(code, new Regex("^[0-9A-Za-z]{4}-[0-9A-Za-z]{4}$"),
+            $"브라우저에 넣을 일회용 코드가 화면에 뜬다 (실제: '{code}')");
+
+        // 대기 화면으로 교체됐는지 — 설정 본문은 감춰지고 같은 자리에 안내가 뜬다.
+        Assert.IsTrue(app.Driver.FindElement(By.Id("setupLogin")).Displayed, "대기 화면으로 전환된다");
+        Assert.IsFalse(app.Driver.FindElement(By.Id("setupMain")).Displayed, "설정 본문은 감춰진다");
+        StringAssert.Contains(app.Driver.FindElement(By.Id("ghWaitText")).Text, "승인을 기다리는 중",
+            "기술 용어 대신 사람이 읽을 문구를 보여준다");
+
+        // 승인 여부를 실제로 되묻고 있는지. 화면에는 감췄지만 응답 종류는 남겨 둔다 —
+        // slow_down 이면 질의 간격을 어기고 있다는 뜻이고, 승인해도 화면이 바뀌지 않는다.
+        string last = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghWait")).GetAttribute("data-last") ?? ""; } catch { return ""; } },
+            s => s.Length > 0, 25000);
+        Assert.AreEqual("authorization_pending", last, $"승인 대기 응답을 받는다 (실제: '{last}')");
+
+        // 돌아가기로 설정 본문에 복귀할 수 있어야 한다.
+        app.Driver.FindElement(By.Id("ghBack")).Click();
+        bool back = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("setupMain")).Displayed; } catch { return false; } },
+            v => v, 5000);
+        Assert.IsTrue(back, "돌아가기로 설정 본문에 복귀한다");
     }
 
     [TestMethod]

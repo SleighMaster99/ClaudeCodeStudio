@@ -54,8 +54,15 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
 5단계: 버전 검증 → MSBuild → `Shipping\<ver>\` 스테이징 → makensis → `installer\VERSION` 갱신.
 산출물 `Shipping\ClaudeCodeStudio-Setup-<ver>.exe` (`Shipping/` 은 .gitignore).
 
-**버전 규칙**: `MAJOR.MINOR.PATCH`, 선행 0 금지, **`installer\VERSION`(마지막 발행분)보다 높아야** 통과.
-생성 성공 시 `VERSION` 이 자동 갱신되어 다음 기준선이 된다. `0.0.0` = 아직 발행 없음.
+**버전 규칙**: `MAJOR.MINOR.PATCH`, 선행 0 금지, **마지막 발행분보다 높아야** 통과.
+기준선은 `installer\VERSION` 과 **원격 태그(`v<ver>`) 중 높은 쪽**이다 —
+파일만 보면 VERSION 커밋을 빠뜨린 clone 이 이미 배포한 버전을 다시 만든다.
+오프라인이거나 `--sort` 를 모르는 구버전 git 이면 조용히 파일 값만 쓴다. `0.0.0` = 아직 발행 없음.
+
+**`VERSION` 커밋은 ReleaseTool 이 한다.** 배포(`gh release create`)가 성공하면
+`chore/version-<ver>` 브랜치를 만들어 `installer\VERSION` 만 커밋·push 하고 원래 브랜치로 돌아온다.
+전용 브랜치를 쓰는 이유는 이 저장소가 main 직접 커밋을 금지하기 때문 — 머지는 사람이 PR 로 한다.
+`Build.bat` 을 콘솔에서 직접 부른 경우에는 파일만 갱신되므로 직접 커밋해야 한다.
 
 **주의할 점 세 가지**:
 - `Build.bat` 은 솔루션 전체가 아니라 **`-t:ClaudeCodeStudio`** 로 빌드한다. ProjectReference 로 Core+모듈 2개는
@@ -65,6 +72,45 @@ Build.bat 1.0.1 --skip-build       기존 bin\Release 재사용
 - `installer/redist/` 의 **VC++ CRT 3종은 필수**다. Release 가 `/MD` 링크라 이것이 없으면 재배포 패키지가 없는
   PC 에서 실행 자체가 안 된다. per-user 설치라 재배포 패키지를 깔 수 없어(관리자 권한) 앱 폴더에 동봉한다.
   툴셋을 올리면 `VC\Redist\MSVC\<ver>\x64\Microsoft.VC143.CRT\` 에서 3개를 다시 복사한다.
+
+**설치 옵션 페이지**: Directory 다음에 nsDialogs 커스텀 페이지가 하나 있다 — 서버 저장소 URL(선택) 하나만 받는다.
+넣으면 `HKCU\Software\ClaudeCodeStudio` 의 `RepoUrl` 값에 기록되고, 비우면 기록하지 않는다(건너뛰기).
+
+**바탕화면 바로가기는 마지막(Finish) 화면의 체크박스**가 만든다. MUI 의 `SHOWREADME` 슬롯에 경로 대신 빈
+문자열을 주고 `CreateDesktopShortcut` 을 콜백으로 걸었다 — 체크박스와 콜백만 쓰는 관용적 활용이다.
+시작 메뉴 바로가기는 옵션과 무관하게 항상 만든다.
+
+## 첫 실행 (초기 설정)
+
+`~/.claude` 가 git 워킹트리가 아니면 sync 모듈이 `configured:false` 를 올려 **초기 설정 화면**만 노출한다.
+저장소 URL 은 **어떤 기본값도 채우지 않는다** — 특정 저장소가 박혀 있으면 남의 저장소로 부트스트랩될 수 있다.
+화면은 두 갈래다.
+
+- **서버 주소를 직접 입력** — `bootstrap` 명령. 입력칸은 인스톨러가 남긴 `RepoUrl`(있으면)로만 채워진다.
+  **이미 있는 저장소를 연결하는 갈래다** — 없는 URL 을 넣으면 `fetch` 가 실패하고 롤백된다(저장소를 만들지 않는다).
+- **GitHub 계정에 새로 만들기** — `createRepo` 명령. `GET /repos/{owner}/{repo}` 로 존재를 보고,
+  없으면 `POST /user/repos` 로 만든 뒤 그 URL 로 `bootstrap` 한다. 로그인 전이면 이 갈래는 잠긴다.
+
+## GitHub 인증 (OAuth Device Flow)
+
+**외부 도구에 기대지 않는다** — `gh` CLI 는 쓰지 않고 앱이 직접 브라우저 인증을 진행한다.
+설치자는 아무것도 준비할 필요가 없고, [GitHub 로그인] 버튼 하나로 끝난다.
+
+- `client_id` 는 소스에 박혀 있다(`kOAuthClientId`). Device Flow 는 **`client_secret` 이 필요 없어** 안전하다.
+  이 값은 저장소 소유자가 등록한 OAuth App 의 것이고, 앱 사용자는 각자 자기 계정으로 승인만 한다.
+- `ghLogin` → `POST github.com/login/device/code` → 일회용 코드를 화면에 띄우고 브라우저를 연다.
+- 승인 여부는 웹이 **5초마다 `ghPoll`** 을 보내 확인한다(GitHub 권장 간격 — 더 조르면 `slow_down`).
+  `ghLogin` 안에서 기다리면 창이 멈추고, 워커 스레드에서는 WebView2 로 회신할 수 없다.
+- 받은 토큰은 **DPAPI 로 암호화**해 앱 상태 폴더의 `github_token.bin` 에 둔다.
+  경로가 `CCSTUDIO_STATE_DIR` 을 따르므로 E2E 는 자동으로 미로그인 상태가 된다.
+- 토큰을 받으면 **`git credential approve` 로 자격증명에도 넣는다** — 이게 없으면 저장소는 만들어져도
+  첫 push 에서 막힌다(`gh auth login` 이 대신 해주던 일이다).
+
+HTTP 는 WinHTTP(`HttpJson`), 응답 파싱은 기존 미니 JSON 파서를 그대로 쓴다 — 필요한 필드가 모두 최상위라 충분하다.
+
+`CmdBootstrap` 은 fetch 후 `origin/main` 유무로 방향을 정한다 — 있으면 서버 것으로 정렬(기존 설정은
+`.sync-backup-<시각>/` 에 백업), 없으면(빈 저장소) 화이트리스트 `.gitignore` 를 만들고 이 PC 설정을 첫 커밋으로 push.
+중간 실패 시 이 실행에서 만든 `.git` 을 지운다 — 롤백하지 않으면 워킹트리로 남아 초기 설정 화면이 다시 뜨지 않는다.
 
 ## 모듈 아키텍처
 

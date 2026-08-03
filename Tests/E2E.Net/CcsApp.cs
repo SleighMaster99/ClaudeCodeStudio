@@ -88,14 +88,79 @@ public sealed class CcsApp : IDisposable
         return app;
     }
 
+    // 일반 Edge 실행 파일. Selenium 의 브라우저 검증을 통과시키는 용도다(실행되지는 않는다).
+    private static string? EdgeBinary()
+    {
+        foreach (string p in new[] {
+            @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            @"C:\Program Files\Microsoft\Edge\Application\msedge.exe" })
+            if (File.Exists(p)) return p;
+        return null;
+    }
+
+    // 설치된 WebView2 런타임 중 가장 높은 버전의 실행 파일. 드라이버 버전을 맞추는 데 쓴다.
+    private static string? WebView2Binary()
+    {
+        foreach (string root in new[] {
+            @"C:\Program Files (x86)\Microsoft\EdgeWebView\Application",
+            @"C:\Program Files\Microsoft\EdgeWebView\Application" })
+        {
+            if (!Directory.Exists(root)) continue;
+            string? best = null;
+            var bestVer = new Version(0, 0);
+            foreach (string dir in Directory.GetDirectories(root))
+            {
+                string exe = Path.Combine(dir, "msedgewebview2.exe");
+                if (!File.Exists(exe)) continue;
+                if (Version.TryParse(Path.GetFileName(dir), out var v) && v > bestVer) { bestVer = v; best = exe; }
+            }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    // msedgedriver.exe 가 있는 폴더. CCS_MSEDGEDRIVER_DIR 이 우선이고, 없으면 Selenium Manager 가
+    // 받아 둔 캐시에서 고른다 — WebView2 런타임과 같은 버전을 먼저, 없으면 가장 높은 버전을 쓴다.
+    private static string MsEdgeDriverDir()
+    {
+        string? pinned = Environment.GetEnvironmentVariable("CCS_MSEDGEDRIVER_DIR");
+        if (!string.IsNullOrEmpty(pinned)) return pinned;
+
+        string cache = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".cache", "selenium", "msedgedriver", "win64");
+        if (!Directory.Exists(cache))
+            throw new InvalidOperationException(
+                $"msedgedriver 캐시 미발견: {cache} — CCS_MSEDGEDRIVER_DIR 로 폴더를 지정하세요.");
+
+        var dirs = Directory.GetDirectories(cache)
+            .Where(d => File.Exists(Path.Combine(d, "msedgedriver.exe")))
+            .ToArray();
+
+        string? want = WebView2Binary() is string exe ? Path.GetFileName(Path.GetDirectoryName(exe)!) : null;
+        string? exact = dirs.FirstOrDefault(d => Path.GetFileName(d) == want);
+        if (exact != null) return exact;
+
+        string? newest = dirs
+            .Where(d => Version.TryParse(Path.GetFileName(d), out _))
+            .OrderByDescending(d => Version.Parse(Path.GetFileName(d)))
+            .FirstOrDefault();
+        return newest ?? throw new InvalidOperationException($"msedgedriver.exe 미발견: {cache}");
+    }
+
     private static EdgeDriver CreateDriver(int port)
     {
-        var options = new EdgeOptions { UseWebView = true, DebuggerAddress = $"127.0.0.1:{port}" };
-        string? driverDir = Environment.GetEnvironmentVariable("CCS_MSEDGEDRIVER_DIR");
-        // 핀 디렉터리 지정 시 그 드라이버, 미지정 시 Selenium Manager 가 설치 Edge 버전 정합 드라이버를 해석.
-        EdgeDriverService service = !string.IsNullOrEmpty(driverDir)
-            ? EdgeDriverService.CreateDefaultService(driverDir, "msedgedriver.exe")
-            : EdgeDriverService.CreateDefaultService();
+        // UseWebView 는 브라우저를 새로 띄울 때 쓰는 옵션이라 켜지 않는다 — DebuggerAddress 로
+        // 이미 떠 있는 앱에 붙기만 한다.
+        // 그런데도 Selenium 은 브라우저 바이너리를 확인한다. webview2 로 해석되면 Selenium Manager 가
+        // "<WebView2 설치폴더>\msedge.exe" 를 조립해 내놓는데 그런 파일은 없다 — 그 폴더의 실행 파일은
+        // msedgewebview2.exe 다(selenium-manager 를 직접 돌려 확인). 그래서 일반 Edge 를 일러 준다.
+        // attach 전용이라 이 바이너리가 실행되는 일은 없다. 드라이버는 아래에서 따로 고른다.
+        var options = new EdgeOptions { DebuggerAddress = $"127.0.0.1:{port}" };
+        string? binary = EdgeBinary();
+        if (binary != null) options.BinaryLocation = binary;
+
+        var service = EdgeDriverService.CreateDefaultService(MsEdgeDriverDir(), "msedgedriver.exe");
         service.HideCommandPromptWindow = true;
         return new EdgeDriver(service, options, TimeSpan.FromSeconds(60));
     }
