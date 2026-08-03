@@ -130,6 +130,38 @@ function startGhPoll() {
   ghPollTimer = setInterval(function () { send("ghPoll"); }, 5000);
 }
 
+// 승인 대기 화면으로 전환한다. 창을 겹치지 않고 설정 본문 자리를 그대로 쓴다.
+function showLoginWait(code) {
+  $("ghCode").textContent = code || "—";
+  $("ghWaitText").textContent = "승인을 기다리는 중…";
+  $("ghWait").hidden = false;
+  $("ghEnded").hidden = true;
+  $("ghRetry").hidden = true;
+  $("ghCopy").textContent = "코드 복사";
+  $("setupMain").hidden = true;
+  $("setupLogin").hidden = false;
+  startGhPoll();
+}
+
+// 코드가 만료됐거나 거부된 경우 — 기다림을 멈추고 다시 시도할 길을 연다.
+function endLoginWait(text) {
+  stopGhPoll();
+  $("ghWait").hidden = true;
+  $("ghEnded").textContent = text;
+  $("ghEnded").hidden = false;
+  $("ghRetry").hidden = false;
+}
+
+// 설정 본문으로 복귀.
+function backToSetupMain() {
+  stopGhPoll();
+  $("setupLogin").hidden = true;
+  $("setupMain").hidden = false;
+  const b = $("ghLoginBtn");
+  b.disabled = false;
+  b.textContent = "GitHub 로그인";
+}
+
 // 로그인 여부에 따라 '새로 만들기' 모드를 열거나 잠근다.
 function applyGhInfo(m) {
   ghAccount = m.account || "";
@@ -142,13 +174,7 @@ function applyGhInfo(m) {
 
   // 로그인 전이면 앱에서 바로 로그인할 수 있게 연다
   $("ghLoginBox").hidden = ready;
-  if (ready) {
-    stopGhPoll();
-    $("ghCodeBox").hidden = true;
-    const b = $("ghLoginBtn");
-    b.disabled = false;
-    b.textContent = "GitHub 로그인";
-  }
+  if (ready) backToSetupMain();   // 승인이 끝났으니 설정 본문으로 돌아간다
 
   // 인스톨러가 남긴 주소는 아직 아무것도 채워지지 않았을 때만 제안한다
   const ru = $("repoUrl");
@@ -324,15 +350,19 @@ function handle(msg) {
       applyGhInfo(msg);
       break;
     case "ghLogin":
-      $("ghCode").textContent = msg.code || "—";
-      $("ghCodeHint").textContent = "승인하면 자동으로 넘어갑니다";
-      $("ghCodeBox").hidden = false;
-      $("ghLoginBtn").textContent = "브라우저에서 승인하세요";
-      startGhPoll();
+      showLoginWait(msg.code);
       break;
     case "ghPending":
-      // 확인이 돌고 있음을 드러낸다. 승인 전 authorization_pending 은 정상이다.
-      $("ghCodeHint").textContent = msg.note ? ("확인 중 · " + msg.note) : "확인 중…";
+      // 승인 전 authorization_pending 은 정상 흐름이라 문구를 그대로 둔다.
+      // 그 밖(연결 실패·slow_down)은 되묻고 있다는 것만 알린다 — 원문은 감춘다.
+      $("ghWaitText").textContent = (!msg.note || msg.note === "authorization_pending")
+        ? "승인을 기다리는 중…" : "승인을 기다리는 중… (연결 재시도)";
+      // 화면에는 감춘 응답 종류를 검증용으로 남긴다 (slow_down 이면 간격을 어기고 있다는 뜻).
+      $("ghWait").setAttribute("data-last", msg.note || "");
+      break;
+    case "ghExpired":
+      endLoginWait(msg.reason === "access_denied"
+        ? "승인이 거부되었습니다." : "코드가 만료되었습니다.");
       break;
     case "log":
       hideBusy();          // 모든 원격 작업이 마지막에 log 를 보낸다
@@ -392,6 +422,38 @@ $("ghLoginBtn").addEventListener("click", function () {
   this.disabled = true;
   this.textContent = "로그인 준비 중…";
   send("ghLogin");
+});
+
+$("ghBack").addEventListener("click", function () {
+  send("ghCancel");        // 기다리던 코드를 버린다 — 돌아온 뒤 유령 폴링이 남지 않게
+  backToSetupMain();
+});
+
+$("ghRetry").addEventListener("click", function () {
+  $("ghRetry").hidden = true;
+  $("ghEnded").hidden = true;
+  $("ghWaitText").textContent = "새 코드를 받는 중…";
+  $("ghWait").hidden = false;
+  send("ghLogin");
+});
+
+$("ghCopy").addEventListener("click", function () {
+  const btn = this, code = $("ghCode").textContent;
+  function mark() { btn.textContent = "복사됨"; setTimeout(function () { btn.textContent = "코드 복사"; }, 1600); }
+  function fallback() {
+    // clipboard API 가 막힌 환경 대비 — 임시 입력에 담아 복사한다.
+    const t = document.createElement("textarea");
+    t.value = code;
+    document.body.appendChild(t);
+    t.select();
+    try { document.execCommand("copy"); mark(); } catch (_) {}
+    document.body.removeChild(t);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(mark, fallback);
+  } else {
+    fallback();
+  }
 });
 
 // 브라우저에서 승인하고 앱으로 돌아오면 다음 주기를 기다리지 않고 바로 확인한다.

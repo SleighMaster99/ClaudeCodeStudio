@@ -654,8 +654,9 @@ static void CmdGhPoll() {
     if (token.empty()) {
         std::string err = JsonGet(resp, "error");
         if (err == "expired_token" || err == "access_denied") {
+            // 더 기다려도 소용없다. 화면이 '다시 시도' 를 열도록 종류를 알려 준다.
             g_deviceCode.clear();
-            Result(false, "로그인이 완료되지 않았습니다", err);
+            PostToWeb("{\"type\":\"ghExpired\",\"reason\":\"" + JsonEsc(err) + "\"}");
             return;
         }
         if (err == "slow_down") {
@@ -744,6 +745,7 @@ MODULE_API void Module_Handle(const char* reqJson) {
     else if (cmd == "ghInfo")    CmdGhInfo();
     else if (cmd == "ghLogin")   CmdGhLogin();
     else if (cmd == "ghPoll")    CmdGhPoll();
+    else if (cmd == "ghCancel")  { g_deviceCode.clear(); CmdGhInfo(); }
     else if (cmd == "createRepo") CmdCreateRepo(req);
     else                         Result(false, "알 수 없는 명령", cmd);
 }

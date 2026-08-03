@@ -132,15 +132,26 @@ public class Scenarios
             s => s.Length > 0 && s != "—", 40000);
         StringAssert.Matches(code, new Regex("^[0-9A-Za-z]{4}-[0-9A-Za-z]{4}$"),
             $"브라우저에 넣을 일회용 코드가 화면에 뜬다 (실제: '{code}')");
-        Assert.IsTrue(app.Driver.FindElement(By.Id("ghCodeBox")).Displayed, "코드 영역이 열린다");
 
-        // 승인 여부를 실제로 되묻고 있는지 — 이게 안 뜨면 폴링이 돌지 않는 것이고,
-        // 승인해도 화면이 바뀌지 않는다.
-        string hint = CcsApp.WaitUntil(
-            () => { try { return app.Driver.FindElement(By.Id("ghCodeHint")).Text; } catch { return ""; } },
-            s => s.Contains("확인 중"), 25000);
-        StringAssert.Contains(hint, "authorization_pending",
-            $"승인 대기 응답을 받는다 — slow_down 이면 질의 간격을 어기고 있다는 뜻이다 (실제: '{hint}')");
+        // 대기 화면으로 교체됐는지 — 설정 본문은 감춰지고 같은 자리에 안내가 뜬다.
+        Assert.IsTrue(app.Driver.FindElement(By.Id("setupLogin")).Displayed, "대기 화면으로 전환된다");
+        Assert.IsFalse(app.Driver.FindElement(By.Id("setupMain")).Displayed, "설정 본문은 감춰진다");
+        StringAssert.Contains(app.Driver.FindElement(By.Id("ghWaitText")).Text, "승인을 기다리는 중",
+            "기술 용어 대신 사람이 읽을 문구를 보여준다");
+
+        // 승인 여부를 실제로 되묻고 있는지. 화면에는 감췄지만 응답 종류는 남겨 둔다 —
+        // slow_down 이면 질의 간격을 어기고 있다는 뜻이고, 승인해도 화면이 바뀌지 않는다.
+        string last = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("ghWait")).GetAttribute("data-last") ?? ""; } catch { return ""; } },
+            s => s.Length > 0, 25000);
+        Assert.AreEqual("authorization_pending", last, $"승인 대기 응답을 받는다 (실제: '{last}')");
+
+        // 돌아가기로 설정 본문에 복귀할 수 있어야 한다.
+        app.Driver.FindElement(By.Id("ghBack")).Click();
+        bool back = CcsApp.WaitUntil(
+            () => { try { return app.Driver.FindElement(By.Id("setupMain")).Displayed; } catch { return false; } },
+            v => v, 5000);
+        Assert.IsTrue(back, "돌아가기로 설정 본문에 복귀한다");
     }
 
     [TestMethod]
