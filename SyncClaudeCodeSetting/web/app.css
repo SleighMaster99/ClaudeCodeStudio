@@ -197,7 +197,16 @@ button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 }
 @keyframes busySpin { to { transform:rotate(360deg); } }
 .busy-title { font-family:var(--font-mono); font-size:0.9375rem; font-weight:600; color:var(--ink); }
-.busy-desc { margin-top:7px; font-size:0.78125rem; color:var(--ink2); }
+.busy-desc { margin-top:7px; font-size:0.78125rem; color:var(--ink2); line-height:1.6; }
+
+/* 확인 카드 버튼 — busy 카드를 그대로 쓰고 버튼 줄만 얹는다 */
+.confirm-btns { display:flex; gap:8px; margin-top:18px; }
+.confirm-btn { flex:1; padding:9px 10px; border-radius:8px; cursor:pointer;
+  font-family:var(--font-mono); font-size:0.75rem; font-weight:600;
+  border:1px solid var(--line2); background:var(--win); color:var(--ink2); }
+.confirm-btn:hover { border-color:var(--accent); color:var(--accent); }
+.confirm-btn.go { border-color:var(--accent); background:var(--accent); color:var(--on-accent); }
+.confirm-btn.go:hover { border-color:var(--accent2); background:var(--accent2); color:var(--on-accent); }
 
 /* 초기 설정 (미설정 시) */
 .setup { flex:1; display:flex; align-items:center; justify-content:center; padding:24px; }
