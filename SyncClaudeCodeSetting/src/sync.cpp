@@ -418,6 +418,9 @@ static void CmdLog() {
 }
 
 static void CmdFetch() {
+    // 저장소가 아니면 가져올 원격도 없다. 초기 설정 화면에서 시작 시 확인이 돌 때
+    // 실패 토스트가 뜨지 않도록 조용히 상태만 되돌린다.
+    if (!IsConfigured()) { CmdStatus(); return; }
     std::string out;
     DWORD code = Git(L"fetch origin", out);
     if (code != 0) Result(false, "원격에 접근할 수 없습니다 (오프라인/VPN 확인)", Trim(out));
@@ -425,10 +428,46 @@ static void CmdFetch() {
     CmdLog();
 }
 
+static void BackupExisting();   // 덮어쓰기 전 안전망 — 정의는 아래 초기 설정 절에 있다
+
+// "서버 → 이 PC 적용" — 이 PC 를 서버 상태로 맞춘다.
+// 버릴 것이 없으면 앞으로 감고(fast-forward), 있으면 백업한 뒤 서버 상태로 정렬한다.
+// 두 갈래를 한 명령이 맡는 이유는 버튼 이름이 약속하는 것이 하나이기 때문이다 —
+// 사용자는 "서버 설정을 이 PC 에 적용" 을 원하지 커밋이 뒤처졌는지를 묻지 않는다.
 static void CmdPull() {
     std::string out;
-    DWORD code = Git(L"pull --ff-only origin main", out);
-    Result(code == 0, code == 0 ? "서버 변경을 가져왔습니다" : "가져오기 실패", Trim(out));
+    // 판단은 최신 서버 상태를 기준으로 한다. 캐시된 origin/main 으로 정렬하면
+    // 화면에 보이지 않던 서버 변경을 지나친 채 로컬만 버리게 된다.
+    if (Git(L"fetch origin", out) != 0) {
+        Result(false, "서버에 접속하지 못했습니다 (오프라인/VPN 확인)", Trim(out));
+        CmdStatus();
+        CmdLog();
+        return;
+    }
+
+    // 서버에 맞추면 사라지는 것 = 미커밋 수정 + 이 PC 에만 있는 커밋.
+    std::string dirty, counts;
+    Git(L"status --porcelain", dirty);
+    int behind = 0, ahead = 0;
+    if (Git(L"rev-list --left-right --count origin/main...HEAD", counts) == 0)
+        std::sscanf(counts.c_str(), "%d %d", &behind, &ahead);
+    bool discard = !Trim(dirty).empty() || ahead > 0;
+
+    DWORD code;
+    if (discard) {
+        BackupExisting();
+        code = Git(L"reset --hard origin/main", out);
+    } else {
+        code = Git(L"pull --ff-only origin main", out);
+    }
+
+    if (code != 0) {
+        Result(false, "서버 설정 적용 실패", Trim(out));
+    } else if (discard) {
+        Result(true, "서버 설정으로 맞췄습니다", "기존 설정은 .sync-backup 에 백업했습니다");
+    } else {
+        Result(true, "서버 변경을 가져왔습니다", Trim(out));
+    }
     CmdStatus();
     CmdLog();
 }

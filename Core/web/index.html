@@ -222,7 +222,7 @@
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
     }
     function loadSyncSettings() {
-      var out = { autoMin: 0, startupFetch: false, histCount: 8, commitMsg: '', repoUrl: '' };
+      var out = { autoMin: 0, startupFetch: true, histCount: 8, commitMsg: '', repoUrl: '' };
       try {
         var s = JSON.parse(localStorage.getItem(SYNC_KEY));
         if (s) {
@@ -413,7 +413,7 @@
 
     document.getElementById('settingsReset').addEventListener('click', function () {
       settings = { rootPx: DEFAULT_PX, font: '', theme: 'light', startTab: 'sync', lastTab: settings.lastTab };
-      syncSettings = { autoMin: 0, startupFetch: false, histCount: 8, commitMsg: '', repoUrl: '' };
+      syncSettings = { autoMin: 0, startupFetch: true, histCount: 8, commitMsg: '', repoUrl: '' };
       syncControls(); applyAll(); saveSettings(); saveSyncSettings(); pushSyncSettings();
       elWinSize.value = '1920x1080';
       if (wv) wv.postMessage(JSON.stringify({ module: 'core', cmd: 'resize', arg: '1920x1080' }));

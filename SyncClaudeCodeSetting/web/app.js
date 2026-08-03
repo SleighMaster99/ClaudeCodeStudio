@@ -49,10 +49,15 @@ function send(cmd, arg) {
   window.parent.postMessage({ module: "sync", cmd: cmd, arg: arg || "" }, "*");
 }
 
+// 진행 오버레이 없이 보낸다. 사용자가 시킨 일이 아니라 앱이 알아서 하는 확인에 쓴다.
+function sendQuiet(cmd, arg) {
+  window.parent.postMessage({ module: "sync", cmd: cmd, arg: arg || "" }, "*");
+}
+
 // ----- 앱 설정 (셸 설정 탭이 저장, 여기서 소비) -----
 var SYNC_KEY = "ccs.sync.settings.v1";
 function normalizeSettings(s) {
-  var out = { autoMin: 0, startupFetch: false, histCount: 8, commitMsg: "", repoUrl: "" };
+  var out = { autoMin: 0, startupFetch: true, histCount: 8, commitMsg: "", repoUrl: "" };
   if (s) {
     if ([1, 5, 15, 30].indexOf(+s.autoMin) >= 0) out.autoMin = +s.autoMin;
     out.startupFetch = !!s.startupFetch;
@@ -213,6 +218,8 @@ function renderStatus(s) {
 
   const behind = s.behind | 0, ahead = s.ahead | 0;
   const dirty = !s.clean;
+  // 서버 것으로 맞추면 사라지는 이 PC 변경 — 저장 안 된 수정 + 이 PC 에만 있는 커밋.
+  const localCount = (dirty ? Math.max(1, s.dirtyCount | 0) : 0) + ahead;
 
   el.className = "status";
   wire.className = "wire dir-none";
@@ -221,37 +228,77 @@ function renderStatus(s) {
   pull.disabled = true; push.disabled = true;
   pullBadge.hidden = true; pushBadge.hidden = true;
 
-  if (behind > 0) {
+  // '서버 → 이 PC 적용' 은 이름 그대로 동작한다 — 서버와 다르기만 하면 누를 수 있다.
+  // 커밋이 뒤처졌는지가 아니라 설정이 다른지를 본다. 서버에 새 변경이 없어도
+  // 이 PC 만 달라졌으면 눌러서 서버 상태로 되돌릴 수 있어야 한다.
+  if (behind > 0 || localCount > 0) {
+    pull.disabled = false;
+    if (behind > 0) { pullBadge.textContent = behind; pullBadge.hidden = false; }
+    $("pullSub").textContent = localCount > 0
+      ? "이 PC 변경 " + localCount + "건을 버림"
+      : "새 변경 " + behind + "건 가져오기";
+  } else {
+    $("pullSub").textContent = "가져올 변경 없음";
+  }
+
+  if (localCount > 0) {
+    push.disabled = false;
+    if (ahead > 0) { pushBadge.textContent = ahead; pushBadge.hidden = false; }
+    $("pushSub").textContent = dirty ? "커밋 후 반영" : ahead + "건 반영";
+  } else {
+    $("pushSub").textContent = "반영할 변경 없음";
+  }
+
+  if (behind > 0 && localCount > 0) {
+    el.classList.add("is-warn");
+    $("statusTitle").textContent = "양쪽이 갈렸습니다";
+    $("statusSub").textContent = "서버 새 변경 " + behind + "건 · 이 PC 변경 " + localCount + "건";
+    badge.textContent = "주의"; badge.hidden = false;
+    wire.className = "wire dir-pull";
+    $("wireLabel").textContent = "가져오기";
+    pull.classList.add("primary");
+  } else if (behind > 0) {
     el.classList.add("is-warn");
     $("statusTitle").textContent = "동기화 필요";
     $("statusSub").textContent = "서버에 새 변경 " + behind + "건";
     badge.textContent = "주의"; badge.hidden = false;
     wire.className = "wire dir-pull";
     $("wireLabel").textContent = "가져오기";
-    pull.disabled = false; pull.classList.add("primary");
-    pullBadge.textContent = behind; pullBadge.hidden = false;
-    $("pullSub").textContent = "새 변경 " + behind + "건 가져오기";
-  } else if (ahead > 0 || dirty) {
+    pull.classList.add("primary");
+  } else if (localCount > 0) {
     el.classList.add("is-push");
-    $("statusTitle").textContent = "반영할 변경 있음";
+    $("statusTitle").textContent = "서버와 설정이 다름";
     $("statusSub").textContent = dirty
-      ? "저장되지 않은 로컬 변경이 있습니다"
+      ? "이 PC 에서 " + Math.max(1, s.dirtyCount | 0) + "개 파일이 바뀌었습니다"
       : ahead + "건이 서버에 반영되지 않았습니다";
     wire.className = "wire dir-push";
     $("wireLabel").textContent = "반영하기";
-    push.disabled = false; push.classList.add("primary");
-    if (ahead > 0) { pushBadge.textContent = ahead; pushBadge.hidden = false; }
-    $("pushSub").textContent = dirty ? "커밋 후 반영" : ahead + "건 반영";
+    push.classList.add("primary");
   } else {
     el.classList.add("is-good");
     $("statusTitle").textContent = "최신 상태";
     $("statusSub").textContent = "모든 설정이 서버와 일치합니다";
     $("wireLabel").textContent = "동기화됨";
   }
-
-  if (behind === 0) $("pullSub").textContent = "가져올 변경 없음";
-  if (ahead === 0 && !dirty) $("pushSub").textContent = "반영할 변경 없음";
 }
+
+// 서버 것으로 맞추면 사라지는 이 PC 변경 건수. 확인 카드를 띄울지 여기서 정한다.
+function localChangeCount() {
+  const s = lastStatus;
+  if (!s || s.configured === false) return 0;
+  return ((!s.clean) ? Math.max(1, s.dirtyCount | 0) : 0) + (s.ahead | 0);
+}
+
+// 사라질 것이 있을 때만 한 번 묻는다. 버튼을 누른 뒤 무슨 일이 벌어지는지
+// 실행 전에 알려주는 자리다 — 백업이 남더라도 되돌리려면 탐색기를 열어야 한다.
+function showApplyConfirm(count) {
+  $("confirmDesc").textContent =
+    "이 PC 에서 바뀐 " + count + "건이 서버 것으로 덮여 씁니다. " +
+    "덮기 전에 .sync-backup 폴더에 복사해 둡니다.";
+  $("confirm").hidden = false;
+  $("confirmYes").focus();
+}
+function hideApplyConfirm() { $("confirm").hidden = true; }
 
 // 아직 커밋되지 않은 로컬 변경을 나타내는 이력 행.
 // 커밋 포인터(HEAD)가 서버와 같은 자리에 있어도 "이 PC 가 앞서 있다"를 태그 위치로 보이게 한다.
@@ -402,8 +449,17 @@ window.addEventListener("message", (e) => {
 });
 
 // wiring
-$("pullBtn").addEventListener("click", () => { if (!$("pullBtn").disabled) send("pull"); });
+$("pullBtn").addEventListener("click", () => {
+  if ($("pullBtn").disabled) return;
+  const count = localChangeCount();
+  if (count > 0) { showApplyConfirm(count); return; }   // 사라질 것이 있으면 먼저 묻는다
+  send("pull");
+});
 $("pushBtn").addEventListener("click", () => { if (!$("pushBtn").disabled) send("push"); });
+
+$("confirmNo").addEventListener("click", hideApplyConfirm);
+$("confirmYes").addEventListener("click", () => { hideApplyConfirm(); send("pull"); });
+$("confirm").addEventListener("keydown", (e) => { if (e.key === "Escape") hideApplyConfirm(); });
 // 초기 설정 화면에서는 gh 상태를 다시 조회한다 — 터미널에서 gh auth login 을 마친 뒤
 // 앱을 다시 켜지 않고 이 버튼만으로 '새로 만들기' 를 열 수 있게 한다.
 $("refreshBtn").addEventListener("click", () => {
@@ -496,7 +552,11 @@ if (appSettings.repoUrl) {
   if (__ru) __ru.value = appSettings.repoUrl;
 }
 if (appSettings.startupFetch) {
-  send("refresh");
+  // 시작 확인은 화면을 덮지 않는다 — 켜자마자 오버레이가 뜨면 오프라인일 때
+  // 기다림이 그대로 노출된다. 상태 카드 문구만 바꿔 두고 뒤에서 확인한다.
+  $("statusTitle").textContent = "서버 확인 중…";
+  $("statusSub").textContent = "최신 여부를 알아보는 중입니다";
+  sendQuiet("refresh");
 } else {
   send("status");
   send("log");
