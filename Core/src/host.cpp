@@ -59,20 +59,44 @@ static std::wstring ExeDir() {
 }
 
 // ---------- app state dir / window size ----------
+// 설치본인지 개발 빌드인지는 자기 옆의 uninstall.exe 로 가른다 — 인스톨러만 만드는
+// 파일이라 설치본에만 있다. 빌드 구성(Debug/Release)으로 가르면 bin\Release 를
+// 설치본으로 오인하고, 환경변수로 가르면 탐색기에서 직접 띄웠을 때 걸리지 않는다.
+static bool IsInstalledBuild() {
+    std::error_code ec;
+    return fs::exists(fs::path(ExeDir()) / L"uninstall.exe", ec);
+}
+
 // 앱 로컬 상태(창 크기, WebView2 프로필, GitHub 토큰) 저장 위치.
-// 기본 %LOCALAPPDATA%\SleighMaster\ClaudeCodeStudio, 테스트 격리는 CCSTUDIO_STATE_DIR 오버라이드.
+// 개발 빌드와 설치본이 한 폴더를 쓰면 서로를 덮어쓴다 — 개발에서 테마를 바꾸면
+// 설치본도 바뀌고 창 크기도 따라간다. 개발 쪽에 -dev 를 붙여 갈라 둔다
+// (같은 회사의 MDViewer 가 쓰는 접미사 관례를 따른다).
+static std::wstring DefaultStateDir() {
+    std::wstring base = EnvVar(L"LOCALAPPDATA") + L"\\SleighMaster\\ClaudeCodeStudio";
+    return IsInstalledBuild() ? base : base + L"-dev";
+}
+// 테스트 격리는 CCSTUDIO_STATE_DIR 오버라이드.
 static std::wstring StateDir() {
     std::wstring o = EnvVar(L"CCSTUDIO_STATE_DIR");
-    return o.empty() ? EnvVar(L"LOCALAPPDATA") + L"\\SleighMaster\\ClaudeCodeStudio" : o;
+    return o.empty() ? DefaultStateDir() : o;
 }
 static std::wstring SizeFilePath() { return StateDir() + L"\\window_size.txt"; }
+
+// sync 모듈도 같은 폴더(토큰)를 본다. 각자 판단하면 규칙이 두 곳으로 갈라지므로
+// Core 가 정한 값을 환경변수로 넘겨 프로세스 전체가 한 답을 쓰게 한다.
+// 이미 지정돼 있으면(검증 실행) 손대지 않는다.
+static void PublishStateDir() {
+    if (!EnvVar(L"CCSTUDIO_STATE_DIR").empty()) return;
+    SetEnvironmentVariableW(L"CCSTUDIO_STATE_DIR", DefaultStateDir().c_str());
+}
 
 // 회사 폴더가 생기기 전 자리(%LOCALAPPDATA%\ClaudeCodeStudio)에 상태가 남아 있으면
 // 새 자리로 한 번 옮긴다. 옮기지 않으면 GitHub 로그인을 다시 해야 한다.
 // 새 폴더가 이미 있으면 아무것도 하지 않는다 — 이사는 처음 한 번뿐이다.
-// sync 모듈도 같은 폴더를 보므로, 모듈이 뜨기 전인 Core_Run 초입에서 끝낸다.
+// 옛 폴더는 설치본이 쓰던 것이라 설치본으로 실행했을 때만 옮긴다.
 static void MigrateStateDir() {
     if (!EnvVar(L"CCSTUDIO_STATE_DIR").empty()) return;   // 검증 실행은 격리 폴더를 쓴다
+    if (!IsInstalledBuild()) return;
     std::wstring local = EnvVar(L"LOCALAPPDATA");
     if (local.empty()) return;
     fs::path oldDir = fs::path(local) / L"ClaudeCodeStudio";
@@ -279,6 +303,7 @@ extern "C" CORE_API int Core_Run(HINSTANCE hInst, int nCmdShow) {
     HRESULT co = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     MigrateStateDir();   // 창 크기를 읽기 전에 끝낸다 — 옛 자리 값을 그대로 이어받게
+    PublishStateDir();   // 이사 판단이 끝난 뒤에 넘긴다 (넘기면 오버라이드로 보이므로)
 
     g_webDir = ExeDir() + L"\\web";
 

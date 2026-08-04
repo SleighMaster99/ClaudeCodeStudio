@@ -113,6 +113,29 @@ NSIS 는 browse 로 고른 폴더에 **마지막 조각 하나만**(`ClaudeCodeS
 **설치 경로를 바꾸면 statusLine 이 한 번 끊긴다.** `~/.claude/settings.json` 의 `statusLine` 이 옛 경로를 가리키므로
 상태바 설정 탭에서 **저장 & 적용**을 한 번 눌러야 한다. 그 파일은 동기화 대상이라 PC 마다 한 번씩 필요하다.
 
+## 개발 빌드와 설치본은 상태를 나눠 쓴다
+
+**가르는 기준은 자기 옆의 `uninstall.exe`** — 인스톨러만 만드는 파일이라 설치본에만 있다
+(`host.cpp` `IsInstalledBuild()`). 빌드 구성으로 가르면 `bin\Release` 를 설치본으로 오인하고,
+환경변수로 가르면 탐색기에서 직접 띄웠을 때 걸리지 않는다.
+
+| 무엇 | 설치본 | 개발 빌드 |
+| --- | --- | --- |
+| 창 크기 · 테마 · 글꼴 · 시작 탭 · 동기화 설정 · GitHub 토큰 | `%LOCALAPPDATA%\SleighMaster\ClaudeCodeStudio` | 같은 경로 + `-dev` |
+| statusLine 레이아웃 (`config.json`) | 설치 폴더 | 저장소 루트 (`FindRoot()` 가 dll 옆부터 찾는다) |
+| statusLine 실행 경로 · 동기화 대상 | `~/.claude` — **공유** | 〃 |
+
+**뒤의 둘은 일부러 공유한다.** Claude Code 가 실제로 읽는 것이라, 갈라놓으면 개발 중에
+제대로 도는지 확인할 대상이 사라진다. 대신 개발 빌드로 **저장 & 적용**을 누르면
+`settings.json` 에 개발 경로가 박히므로, 설치본에서 한 번 더 눌러야 한다.
+
+**경로 판단은 Core 가 한 번만 하고 `CCSTUDIO_STATE_DIR` 로 넘긴다**(`PublishStateDir()`).
+sync 모듈이 따로 판단하면 규칙이 두 곳으로 갈라진다. 이미 지정돼 있으면(검증 실행) 손대지 않는다.
+`MigrateStateDir()` 은 이 값을 넘기기 **전에** 돌아야 하고, 옛 폴더는 설치본이 쓰던 것이라
+설치본으로 실행했을 때만 옮긴다.
+
+`ReleaseTool` 은 설치본에 들어가지 않는 개발 도구라 WebView2 프로필을 `-dev` 쪽에 둔다.
+
 ## 첫 실행 (초기 설정)
 
 `~/.claude` 가 git 워킹트리가 아니면 sync 모듈이 `configured:false` 를 올려 **초기 설정 화면**만 노출한다.

@@ -198,11 +198,12 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 static void InitWebView() {
-    // 앱과 프로필을 섞지 않는다. CCS 상태 폴더 아래에 ReleaseTool 전용으로 둔다.
+    // 앱과 프로필을 섞지 않는다. ReleaseTool 은 설치본에 들어가지 않는 개발 도구라
+    // 개발 쪽 상태 폴더(-dev) 아래에 전용으로 둔다 — 설치본 상태를 건드리지 않게.
     wchar_t local[MAX_PATH]{};
     DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
     std::wstring userData = (n ? std::wstring(local) : ExeDir())
-                          + L"\\SleighMaster\\ClaudeCodeStudio\\ReleaseTool\\WebView2";
+                          + L"\\SleighMaster\\ClaudeCodeStudio-dev\\ReleaseTool\\WebView2";
 
     // 가상 호스트를 DNS 로 조회하려다 콜드 스타트가 늘어지는 것을 막는다 (Core 와 동일).
     auto envOptions = Make<CoreWebView2EnvironmentOptions>();
