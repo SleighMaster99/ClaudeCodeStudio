@@ -1,0 +1,6 @@
+# 상태바 설정의 "저장 & 적용" 은 config.json 을 바이너리 모드로 다시 쓴다
+# (ClaudeCodeStatusBar/src/statusbar.cpp 의 WriteFileUtf8) — 줄바꿈이 늘 LF 다.
+# core.autocrlf 가 이 파일을 CRLF 로 체크아웃하면, 앱이 한 번 저장할 때마다
+# 내용이 한 글자도 다르지 않은데 수정된 것으로 표시된다.
+# 실제 동작에 맞춰 이 파일만 LF 로 고정한다.
+config.json text eol=lf
