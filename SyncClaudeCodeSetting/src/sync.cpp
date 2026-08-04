@@ -178,7 +178,9 @@ static DWORD HttpJson(const wchar_t* verb, const wchar_t* host, const std::wstri
     return status;
 }
 
-// 토큰 파일. 앱 상태 폴더를 따르므로 CCSTUDIO_STATE_DIR 을 쓰는 검증 실행은 자동으로 격리된다.
+// 토큰 파일. 경로는 Core 가 시작할 때 CCSTUDIO_STATE_DIR 로 넘겨 준다 —
+// 설치본이냐 개발 빌드냐를 Core 가 한 번만 판단하고, 검증 실행의 격리도 같은 통로를 탄다.
+// 아래 기본값은 Core 없이 이 모듈만 띄우는 경우의 대비책이다.
 static fs::path TokenPath() {
     std::wstring dir = EnvVar(L"CCSTUDIO_STATE_DIR");
     if (dir.empty()) dir = EnvVar(L"LOCALAPPDATA") + L"\\SleighMaster\\ClaudeCodeStudio";
