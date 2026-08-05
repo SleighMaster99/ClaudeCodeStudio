@@ -22,6 +22,13 @@ const BUSY = {
 let busyCmd = null;
 let busyTimer = null;
 
+// 오버레이는 이 iframe 안에만 있어 셸의 좌측 탭 바까지 덮지 못한다.
+// 오버레이(진행/확인)를 여닫을 때마다 현재 상태를 셸에 알려 탭 전환도 함께 막는다.
+function syncShellLock() {
+  const on = !$("busy").hidden || !$("confirm").hidden;
+  window.parent.postMessage({ type: "busy", on: on }, "*");
+}
+
 function showBusy(cmd) {
   const t = BUSY[cmd];
   if (!t) return;
@@ -29,6 +36,7 @@ function showBusy(cmd) {
   $("busyTitle").textContent = t.title;
   $("busyDesc").textContent = t.desc;
   $("busy").hidden = false;
+  syncShellLock();
   clearTimeout(busyTimer);
   // 안전장치 — 응답이 오지 않아도 화면이 영구히 잠기지 않게 한다
   busyTimer = setTimeout(() => {
@@ -42,6 +50,7 @@ function hideBusy() {
   clearTimeout(busyTimer);
   busyTimer = null;
   $("busy").hidden = true;
+  syncShellLock();
 }
 
 function send(cmd, arg) {
@@ -296,9 +305,10 @@ function showApplyConfirm(count) {
     "이 PC 에서 바뀐 " + count + "건이 서버 것으로 덮여 씁니다. " +
     "덮기 전에 .sync-backup 폴더에 복사해 둡니다.";
   $("confirm").hidden = false;
+  syncShellLock();
   $("confirmYes").focus();
 }
-function hideApplyConfirm() { $("confirm").hidden = true; }
+function hideApplyConfirm() { $("confirm").hidden = true; syncShellLock(); }
 
 // 아직 커밋되지 않은 로컬 변경을 나타내는 이력 행.
 // 커밋 포인터(HEAD)가 서버와 같은 자리에 있어도 "이 PC 가 앞서 있다"를 태그 위치로 보이게 한다.

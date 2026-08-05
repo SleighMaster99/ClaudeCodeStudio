@@ -66,6 +66,12 @@ body {
 /* 설정 탭 — 좌측 탭바 하단에 고정 */
 .tab-settings { margin-top: auto; }
 
+/* 모듈이 작업 중이면 탭 전환을 막는다 (진행 오버레이는 모듈 iframe 안이라 여기까지 못 덮는다) */
+.tabbar.locked { opacity: .55; }
+.tabbar.locked .tab { cursor: not-allowed; }
+.tabbar.locked .tab:hover { background: transparent; }
+.tabbar.locked .tab.active:hover { background: var(--win); }
+
 /* ----- 우측 콘텐츠 ----- */
 .content { flex: 1; position: relative; overflow: hidden; background: var(--win); }
 .pane { display: none; height: 100%; }

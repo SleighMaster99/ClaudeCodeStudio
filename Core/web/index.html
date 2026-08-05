@@ -267,13 +267,26 @@
       });
     });
 
+    // ----- 모듈 작업 중 탭 잠금 -----
+    // 모듈의 진행 오버레이는 그 iframe 안에만 있어 이 탭 바를 덮지 못한다.
+    // 모듈이 상태를 알려 주면 탭 버튼도 함께 잠가 작업 중 탭 전환을 막는다.
+    var tabbar = document.querySelector('.tabbar');
+    var busyModules = {};
+    function setModuleBusy(name, on) {
+      if (on) busyModules[name] = true; else delete busyModules[name];
+      var locked = Object.keys(busyModules).length > 0;
+      tabbar.classList.toggle('locked', locked);
+      tabs.forEach(function (t) { t.disabled = locked; });
+    }
+
     // ----- 메시지 중계: 모듈 iframe <-> C++ 호스트 -----
     // 모듈 iframe 이 부모로 보낸 요청 객체 -> C++ (JSON 문자열)
     window.addEventListener('message', function (e) {
-      if (!wv || !e.data || typeof e.data !== 'object') return;
+      if (!e.data || typeof e.data !== 'object') return;
       for (var k in frames) {
         if (frames[k] && e.source === frames[k].contentWindow) {
-          wv.postMessage(JSON.stringify(e.data));
+          if (e.data.type === 'busy') { setModuleBusy(k, !!e.data.on); return; }   // 셸이 직접 처리 — C++ 로 넘기지 않는다
+          if (wv) wv.postMessage(JSON.stringify(e.data));
           return;
         }
       }
@@ -484,12 +497,13 @@
 
     // 모듈 iframe 이 (재)로드될 때마다 설정을 다시 주입 (내부 렌더 후에도 root/폰트/테마 유지)
     for (var fk in frames) {
-      (function (f) {
+      (function (name, f) {
         if (!f) return;
         f.addEventListener('load', function () {
+          setModuleBusy(name, false);          // 문서가 새로 뜨면 이전 작업 표시는 사라진다 — 잠금이 남지 않게
           try { applyToDoc(f.contentDocument); } catch (_) {}
         });
-      })(frames[fk]);
+      })(fk, frames[fk]);
     }
 
     // 초기 적용
