@@ -94,6 +94,15 @@ public class SyncApplyTests
                                 s => s.Length > 0 && !s.Contains("확인 중"), 30000);
     }
 
+    // 셸(top-frame) 의 좌측 탭이 모두 잠겼는지 본다. 확인 후 sync 모듈로 되돌아간다.
+    private static bool TabsLocked(CcsApp app)
+    {
+        app.Driver.SwitchTo().DefaultContent();
+        bool locked = app.Driver.FindElements(By.CssSelector(".tab")).All(t => !t.Enabled);
+        app.SwitchToModule("sync");
+        return locked;
+    }
+
     [TestMethod]
     public void 이_PC_설정만_달라도_서버_적용_버튼이_켜진다()
     {
@@ -141,6 +150,32 @@ public class SyncApplyTests
         Assert.AreEqual("{\"from\":\"local-edit\"}\n".Replace("\r\n", "\n"),
                         fx.ClientSettings.Replace("\r\n", "\n"),
                         "취소했으므로 이 PC 설정은 그대로다");
+    }
+
+    [TestMethod]
+    public void 확인_카드가_뜨는_동안_왼쪽_탭도_잠긴다()
+    {
+        using var fx = new Fixture();
+        fx.EditLocal("{\"from\":\"local-edit\"}\n");
+
+        using var app = CcsApp.Launch(claudeDir: fx.Client);
+        app.SwitchToModule("sync");
+        app.WaitForSelector("#pullBtn", 10000);
+        WaitForStatus(app);
+
+        Assert.IsFalse(TabsLocked(app), "평소에는 탭이 눌린다");
+
+        app.Driver.FindElement(By.Id("pullBtn")).Click();
+        CcsApp.WaitUntil(() => { try { return app.Driver.FindElement(By.Id("confirm")).Displayed; } catch { return false; } },
+                         v => v, 5000);
+
+        // 카드는 모듈 iframe 안에 떠서 좌측 탭 바를 덮지 못한다 — 셸이 대신 탭을 잠근다.
+        Assert.IsTrue(CcsApp.WaitUntil(() => TabsLocked(app), v => v, 5000),
+            "카드가 떠 있는 동안 왼쪽 탭은 눌리지 않는다");
+
+        app.Driver.FindElement(By.Id("confirmNo")).Click();
+        Assert.IsTrue(CcsApp.WaitUntil(() => !TabsLocked(app), v => v, 5000),
+            "카드를 닫으면 탭이 다시 눌린다");
     }
 
     [TestMethod]
